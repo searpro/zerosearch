@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quickstart — Meridian docs</title>
+<meta name="description" content="Run a Meridian node and write your first points in five minutes.">
+<meta property="og:title" content="Quickstart — Meridian docs">
+<meta property="og:description" content="Run a Meridian node and write your first points in five minutes.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/docs/quickstart.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Quickstart — Meridian docs",
+  "description": "Run a Meridian node and write your first points in five minutes.",
+  "dateModified": "2026-08-14",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+      <li><a href="/demo/index.html">Home</a></li>
+      <li><a href="/demo/docs/index.html">Docs</a></li>
+      <li aria-current="page">Quickstart</li>
+    </ol></nav>
+<main>
+<article>
+<h1>Quickstart</h1>
+<p>This walks through running a single node locally and writing your first points. It takes
+about five minutes and needs nothing installed beyond Docker or a downloaded binary.</p>
+<h2>1. Run a node</h2>
+<p>The container image is <code>ghcr.io/meridian/meridiand:3.2.1</code>. Run it with a mounted
+data directory and port 9080 published. A single node is a complete installation — there is no
+separate coordinator or metadata service to stand up first.</p>
+<h2>2. Create a token</h2>
+<p>On first boot the node prints a bootstrap token to stdout. Exchange it for a long-lived
+token at <code>POST /v1/auth/token</code>. The bootstrap token expires after 15 minutes, which
+catches people who leave a node running overnight before coming back to it.</p>
+<h2>3. Write points</h2>
+<p>Write with <code>POST /v1/write</code> using the v3 line protocol. A point is a measurement
+name, an optional set of tags, one or more fields, and an optional timestamp. Omitting the
+timestamp means server time at ingest.</p>
+<h2>4. Query</h2>
+<p>Query with <code>POST /v1/query</code>. The body takes either MeridianQL or PromQL; set
+<code>"dialect": "promql"</code> for the latter. Responses stream as newline-delimited JSON so
+large result sets do not need to buffer.</p>
+<h2>Next steps</h2>
+<p>Read <a href="/demo/docs/limits.html">limits</a> before you point production traffic at a
+node, and <a href="/demo/docs/authentication.html">authentication</a> before you hand tokens
+to anything.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="../">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

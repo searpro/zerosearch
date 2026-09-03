@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — Meridian</title>
+<meta name="description" content="Meridian documentation index.">
+<meta property="og:title" content="Documentation — Meridian">
+<meta property="og:description" content="Meridian documentation index.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/docs/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Documentation — Meridian",
+  "description": "Meridian documentation index.",
+  "dateModified": "2026-08-14",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+      <li><a href="/demo/index.html">Home</a></li>
+      <li><a href="/demo/docs/index.html">Docs</a></li>
+      <li aria-current="page">Documentation</li>
+    </ol></nav>
+<main>
+<article>
+<h1>Documentation</h1>
+<p>Start with the <a href="/demo/docs/quickstart.html">quickstart</a> to get a node running
+in about five minutes. From there, the <a href="/demo/docs/api.html">HTTP API reference</a>
+covers reads and writes, <a href="/demo/docs/authentication.html">authentication</a> covers
+tokens and scopes, and <a href="/demo/docs/limits.html">limits</a> documents rate limits and
+quotas per plan.</p>
+<h2>Conventions</h2>
+<p>All API endpoints are versioned under <code>/v1</code>. Timestamps are RFC 3339 with a
+mandatory offset. Durations use Go syntax: <code>15m</code>, <code>72h</code>. Every response
+carries an <code>X-Meridian-Request-Id</code> header; include it when contacting support.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="../">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian v3 is out — Meridian blog</title>
+<meta name="description" content="What shipped in Meridian v3.0.0 and what breaks.">
+<meta property="og:title" content="Meridian v3 is out — Meridian blog">
+<meta property="og:description" content="What shipped in Meridian v3.0.0 and what breaks.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/blog/v3-launch.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Meridian v3 is out — Meridian blog",
+  "description": "What shipped in Meridian v3.0.0 and what breaks.",
+  "dateModified": "2026-04-03",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+      <li><a href="/demo/index.html">Home</a></li>
+      <li><a href="/demo/blog/index.html">Blog</a></li>
+      <li aria-current="page">Meridian v3 is out</li>
+    </ol></nav>
+<main>
+<article>
+<h1>Meridian v3 is out</h1>
+<p>v3.0.0 is the largest release we have shipped. It replaces the storage engine, and with it
+the reason people were hitting a wall at around five million series.</p>
+<h2>What is new</h2>
+<p>The new engine separates the series index from the value columns. Compression improved from
+roughly 8x to between 12x and 18x on the workloads we test against. Query planning now happens
+against real column statistics rather than estimates, which mostly shows up as fewer
+pathological plans rather than a uniform speedup.</p>
+<h2>What breaks</h2>
+<p>The v2 line protocol is removed. Use the v3 protocol or the Prometheus remote-write
+endpoint. The config file moves from INI to TOML; run <code>meridiand config migrate</code> to
+convert an existing <code>meridiand.conf</code> in place.</p>
+<p>Upgrading rewrites storage on first boot. On a node holding a terabyte, expect somewhere
+between 20 and 40 minutes during which the node serves reads but rejects writes. Plan for it.</p>
+<h2>Upgrading</h2>
+<p>Go through v2.9 first if you are on anything older; v3 does not read pre-v2.9 storage
+directly. The current patch release is v3.2.1 and that is what new installations should use.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="../">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

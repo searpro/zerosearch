@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authentication — Meridian docs</title>
+<meta name="description" content="Tokens, scopes, rotation, and single sign-on in Meridian.">
+<meta property="og:title" content="Authentication — Meridian docs">
+<meta property="og:description" content="Tokens, scopes, rotation, and single sign-on in Meridian.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/docs/authentication.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Authentication — Meridian docs",
+  "description": "Tokens, scopes, rotation, and single sign-on in Meridian.",
+  "dateModified": "2026-07-30",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+      <li><a href="/demo/index.html">Home</a></li>
+      <li><a href="/demo/docs/index.html">Docs</a></li>
+      <li aria-current="page">Authentication</li>
+    </ol></nav>
+<main>
+<article>
+<h1>Authentication</h1>
+<p>Meridian authenticates with bearer tokens. There are no API keys and no basic auth; a single
+token type keeps the audit trail coherent.</p>
+<h2>Token types</h2>
+<p><strong>Bootstrap tokens</strong> are printed once at first boot and expire after 15
+minutes. <strong>User tokens</strong> inherit the permissions of the user who created them and
+expire after 90 days by default. <strong>Service tokens</strong> are not tied to a user, carry
+an explicit scope list, and do not expire unless you set an expiry.</p>
+<h2>Scopes</h2>
+<p>Scopes are <code>write</code>, <code>read</code>, <code>admin</code>, and
+<code>billing</code>. They do not nest: an <code>admin</code> token cannot write points unless
+it also carries <code>write</code>. This is deliberate — it makes the blast radius of a leaked
+admin token smaller.</p>
+<h2>Rotation</h2>
+<p>Rotate with <code>POST /v1/auth/token/rotate</code>. The old token stays valid for a grace
+period of 60 minutes so a rolling deploy does not have to be atomic. Revoke immediately with
+<code>DELETE /v1/auth/token/{id}</code> when a token is known to be compromised.</p>
+<h2>Single sign-on</h2>
+<p>SAML SSO is available on Business and Enterprise, added in v3.2.0. SCIM provisioning is
+Enterprise only. When SSO is enforced, existing user tokens keep working until they expire;
+service tokens are unaffected.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="../">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

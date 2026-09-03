@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog — Meridian</title>
+<meta name="description" content="Release notes for Meridian v3.2.1, v3.2.0, v3.1.0, and earlier.">
+<meta property="og:title" content="Changelog — Meridian">
+<meta property="og:description" content="Release notes for Meridian v3.2.1, v3.2.0, v3.1.0, and earlier.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/changelog.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Changelog — Meridian",
+  "description": "Release notes for Meridian v3.2.1, v3.2.0, v3.1.0, and earlier.",
+  "dateModified": "2026-08-30",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+
+<main>
+<article>
+<h1>Changelog</h1>
+<h2>v3.2.1 — 30 August 2026</h2>
+<p>Fixes a regression in the Gorilla decoder that could return stale values for series whose
+last write landed exactly on a block boundary. Affects v3.2.0 only. Upgrading is strongly
+recommended for anyone running v3.2.0.</p>
+<h2>v3.2.0 — 12 August 2026</h2>
+<p>Adds object-storage cold tiers for S3, GCS, and S3-compatible endpoints. Adds SAML single
+sign-on on the Business plan. Query planner now pushes filters below joins, which cut p99
+latency on our benchmark suite by 38%.</p>
+<h2>v3.1.0 — 24 June 2026</h2>
+<p>Continuous aggregates are now maintained incrementally rather than on a schedule. Adds the
+<code>/v1/query/explain</code> endpoint. Raises the default rate limit from 6,000 to 10,000
+requests per minute on the Team plan.</p>
+<h2>v3.0.0 — 3 April 2026</h2>
+<p>New storage engine separating the series index from value columns, which is what makes high
+cardinality survivable. Breaking: the v2 line protocol is removed; use the v3 protocol or the
+Prometheus remote-write endpoint. Breaking: <code>meridiand.conf</code> moves from INI to TOML.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="./">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

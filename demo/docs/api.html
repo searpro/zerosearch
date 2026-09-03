@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTTP API reference — Meridian docs</title>
+<meta name="description" content="Meridian v1 HTTP API: write, query, explain, and admin endpoints.">
+<meta property="og:title" content="HTTP API reference — Meridian docs">
+<meta property="og:description" content="Meridian v1 HTTP API: write, query, explain, and admin endpoints.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/docs/api.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "HTTP API reference — Meridian docs",
+  "description": "Meridian v1 HTTP API: write, query, explain, and admin endpoints.",
+  "dateModified": "2026-08-12",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+      <li><a href="/demo/index.html">Home</a></li>
+      <li><a href="/demo/docs/index.html">Docs</a></li>
+      <li aria-current="page">HTTP API reference</li>
+    </ol></nav>
+<main>
+<article>
+<h1>HTTP API reference</h1>
+<p>Every endpoint lives under <code>/v1</code> and speaks JSON unless noted. All requests need
+a bearer token; see <a href="/demo/docs/authentication.html">authentication</a>.</p>
+<h2>POST /v1/write</h2>
+<p>Writes points in the v3 line protocol. The body is <code>text/plain</code>, one point per
+line, up to 5,000 points or 4 MB per request, whichever comes first. Returns 204 on success.
+A partial failure returns 207 with a per-line error list; the successful lines are still
+written, because dropping a whole batch for one malformed line is how you lose data.</p>
+<h2>POST /v1/query</h2>
+<p>Runs a query. Takes <code>query</code>, an optional <code>dialect</code> of
+<code>meridianql</code> or <code>promql</code>, and an optional <code>timeout</code> capped at
+120 seconds. Responses stream as newline-delimited JSON.</p>
+<h2>POST /v1/query/explain</h2>
+<p>Returns the physical plan without executing it, including estimated rows scanned per stage
+and which filters were pushed down. Added in v3.1.0.</p>
+<h2>GET /v1/series</h2>
+<p>Lists series matching a selector. Paginated with a cursor; the page size defaults to 1,000
+and caps at 10,000.</p>
+<h2>DELETE /v1/series</h2>
+<p>Deletes series matching a selector. Asynchronous — returns a job ID to poll at
+<code>GET /v1/jobs/{id}</code>. Deletes are tombstoned immediately and reclaimed at the next
+compaction, so space does not come back instantly.</p>
+<h2>Errors</h2>
+<p>Errors return a JSON body with <code>code</code>, <code>message</code>, and
+<code>request_id</code>. Codes are stable strings such as <code>rate_limited</code>,
+<code>invalid_query</code>, and <code>retention_exceeded</code>. Do not match on message text;
+it changes.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="../">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frequently asked questions — Meridian</title>
+<meta name="description" content="Common questions about Meridian: migration, retention, cardinality limits, and support.">
+<meta property="og:title" content="Frequently asked questions — Meridian">
+<meta property="og:description" content="Common questions about Meridian: migration, retention, cardinality limits, and support.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/faq.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Frequently asked questions — Meridian",
+  "description": "Common questions about Meridian: migration, retention, cardinality limits, and support.",
+  "dateModified": "2026-08-22",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+
+<main>
+<article>
+<h1>Frequently asked questions</h1>
+<h2>Can I migrate from Prometheus?</h2>
+<p>Yes. Meridian exposes a Prometheus remote-write endpoint, so pointing an existing Prometheus
+at Meridian is a configuration change rather than a migration. PromQL is supported for reads,
+though a handful of subqueries behave differently and are listed in the compatibility notes.</p>
+<h2>What is the actual cardinality limit?</h2>
+<p>There is no hard limit. Practically, a single node handles about 50 million active series
+before memory pressure on the index becomes the binding constraint. Past that, shard.</p>
+<h2>Do you support downsampling?</h2>
+<p>Yes, via continuous aggregates that are maintained incrementally as data arrives rather than
+recomputed on a schedule. Aggregates can target any retention tier independently.</p>
+<h2>Is there a data residency option?</h2>
+<p>Business and Enterprise plans can pin storage to the EU, the US, or Australia. Enterprise
+can additionally self-host inside their own VPC, in which case no data leaves their account.</p>
+<h2>What happens if I exceed my ingest ceiling?</h2>
+<p>Writes are throttled rather than dropped, and you get an alert. We do not silently bill
+overage. Sustained excess for more than seven days triggers a conversation about moving up a
+plan, not an automatic charge.</p>
+<h2>How do I cancel?</h2>
+<p>Self-serve from the billing page. Cancellation takes effect at the end of the billing period
+and your data stays readable for 30 days afterwards so you can export it.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="./">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

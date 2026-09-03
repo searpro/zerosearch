@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // No DOM. The worker has no `document`, no `DOMParser`, and no
+    // `createHTMLDocument` — so anything that reaches for one is a compile
+    // error here rather than a runtime failure in the field.
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/worker"],
+  "exclude": []
+}

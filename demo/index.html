@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — the time-series database for operational data</title>
+<meta name="description" content="Meridian is a columnar time-series database built for high-cardinality operational telemetry.">
+<meta property="og:title" content="Meridian — the time-series database for operational data">
+<meta property="og:description" content="Meridian is a columnar time-series database built for high-cardinality operational telemetry.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="http://localhost:5173/demo/index.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "headline": "Meridian — the time-series database for operational data",
+  "description": "Meridian is a columnar time-series database built for high-cardinality operational telemetry.",
+  "dateModified": "2026-08-14",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Meridian Data Ltd"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.site, footer.site { background: #f4f4f6; padding: 12px 20px; }
+  header.site nav a { margin-right: 14px; }
+  .breadcrumbs ol { list-style: none; display: flex; gap: 8px; padding: 0; font-size: 14px; }
+  .breadcrumbs li + li::before { content: "/"; margin-right: 8px; opacity: .5; }
+  code { background: #ececf0; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .promo { border: 1px dashed #bbb; padding: 12px; margin: 24px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<!-- Site chrome: Readability should strip all of this. -->
+<header class="site">
+  <nav aria-label="Main">
+    <a href="/demo/index.html">Meridian</a>
+    <a href="/demo/docs/index.html">Docs</a>
+    <a href="/demo/pricing.html">Pricing</a>
+    <a href="/demo/changelog.html">Changelog</a>
+    <a href="/demo/faq.html">FAQ</a>
+    <a href="/demo/about.html">About</a>
+    <a href="/demo/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="wrap">
+
+<main>
+<article>
+<h1>Time-series storage that does not fall over at high cardinality</h1>
+<p>Meridian is a columnar time-series database designed for operational telemetry: metrics,
+traces, events, and the messy high-cardinality tags that come with them. It ingests roughly
+two million points per second per node and keeps queries interactive at a hundred billion
+rows.</p>
+<h2>Why teams pick Meridian</h2>
+<p>Most time-series systems degrade sharply once tag cardinality passes a few million series.
+Meridian's storage engine separates the series index from the value columns, so adding a
+high-cardinality dimension such as <code>request_id</code> or <code>customer_id</code> costs
+index space but does not slow down scans over the value columns.</p>
+<p>Compression typically lands between 12x and 18x on real operational workloads, using
+delta-of-delta encoding for timestamps and a per-column choice between Gorilla, dictionary,
+and run-length encoding.</p>
+<h2>Deployment</h2>
+<p>Meridian runs as a single static binary with no external dependencies. A single node is a
+complete installation; clustering is opt-in and uses Raft for metadata with independent
+sharding for data. Object storage backends are supported for cold tiers, including S3, GCS,
+and any S3-compatible endpoint.</p>
+<p>The current stable release is <strong>v3.2.1</strong>. See the
+<a href="/demo/changelog.html">changelog</a> for what shipped, or jump straight to the
+<a href="/demo/docs/quickstart.html">quickstart</a>.</p>
+</article>
+</main>
+<aside class="promo">Ready to try Meridian? Start free, no credit card required.</aside>
+</div>
+<footer class="site">
+  <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
+  <p><a href="/demo/index.html">Home</a> &middot; <a href="./">Up</a></p>
+</footer>
+<script type="module" src="/src/index.ts" data-web-ai data-sitemap="/demo/sitemap.xml" data-debug></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /demo/private/
+Sitemap: http://localhost:5173/demo/sitemap.xml

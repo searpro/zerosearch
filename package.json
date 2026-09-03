@@ -1,0 +1,47 @@
+{
+  "name": "web-ai",
+  "version": "0.0.0",
+  "description": "Embeddable in-browser AI assistant. Crawls, indexes and answers questions about the host site entirely client-side via transformers.js.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/web-ai.mjs",
+  "module": "./dist/web-ai.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/web-ai.mjs"
+    },
+    "./dist/*": "./dist/*"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:main && npm run build:lib && npm run build:worker && npm run build:types",
+    "build:main": "vite build --mode main",
+    "build:worker": "vite build --mode worker",
+    "build:types": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "size": "node scripts/check-size.mjs",
+    "build:lib": "vite build --mode lib"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@mozilla/readability": "^0.6.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.10.0",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}
