@@ -43,6 +43,8 @@ peer.handle(WORKER.init, async (params: InitParams) => {
 
 peer.handle(WORKER.ensureManifest, () => require().ensureManifest());
 peer.handle(WORKER.ask, (params: AskParams) => require().ask(params));
+peer.handle(WORKER.enableGeneration, () => require().enableGeneration());
+peer.handle(WORKER.generationStatus, () => require().generationStatus());
 peer.handle(WORKER.revalidate, () => require().revalidate());
 peer.handle(WORKER.stats, () => require().stats());
 

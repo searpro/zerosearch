@@ -6,6 +6,8 @@ import {
   WORKER,
   type AskResult,
   type BuildManifestResult,
+  type GenerationStatus,
+  type TokenEvent,
   type IndexProgress,
   type InitResult,
   type RevalidateResult,
@@ -36,6 +38,8 @@ export class Orchestrator {
   #peer: RpcPeer | null = null;
   #host: Host | null = null;
 
+  #streams = new Map<string, (text: string) => void>();
+  #nextRequest = 0;
   #starting: Promise<InitResult> | null = null;
   #preparing: Promise<void> | null = null;
   #init: InitResult | null = null;
@@ -87,6 +91,12 @@ export class Orchestrator {
     peer.on(EVENT.indexProgress, (p: IndexProgress) =>
       events.emit('index:progress', { done: p.done, total: p.total, url: p.url }),
     );
+    // Streamed tokens are routed to whichever `ask` is waiting on them, by id.
+    peer.on(EVENT.token, (p: TokenEvent) => {
+      events.emit('answer:token', p);
+      this.#streams.get(p.requestId)?.(p.text);
+    });
+    peer.on(EVENT.error, (p: { scope: string; message: string }) => events.emit('error', p));
 
     const result = await peer.call<InitResult>(WORKER.init, {
       origin,
@@ -94,6 +104,7 @@ export class Orchestrator {
       sitemapUrl: config.sitemapUrl,
       maxTier: config.maxTier,
       modelBaseUrl: config.modelBaseUrl,
+      libraryUrl: config.libraryUrl,
       maxPages: config.maxPages,
       siteVersion: config.version,
     });
@@ -131,13 +142,46 @@ export class Orchestrator {
     });
   }
 
-  async ask(query: string, { maxFetch }: { maxFetch?: number } = {}): Promise<AskResult> {
+  /**
+   * Ask a question. `onToken` receives generated text as it is produced, so the
+   * widget can render an answer while the model is still writing it.
+   */
+  async ask(
+    query: string,
+    { maxFetch, onToken }: { maxFetch?: number; onToken?: (text: string) => void } = {},
+  ): Promise<AskResult> {
     await this.prepare();
-    return await this.#call<AskResult>(WORKER.ask, {
-      query,
-      currentUrl: location.href,
-      maxFetch,
-    });
+
+    const requestId = `r${(this.#nextRequest += 1)}`;
+    if (onToken) this.#streams.set(requestId, onToken);
+
+    try {
+      return await this.#call<AskResult>(WORKER.ask, {
+        query,
+        currentUrl: location.href,
+        maxFetch,
+        requestId,
+      });
+    } finally {
+      // Always released: a leaked entry would keep the widget's closure alive
+      // and route a later question's tokens into a dead turn.
+      this.#streams.delete(requestId);
+    }
+  }
+
+  /** Load the generative model. This is the ~300MB download. */
+  async enableGeneration(): Promise<GenerationStatus> {
+    await this.start();
+    const status = await this.#call<GenerationStatus>(WORKER.enableGeneration);
+    if (status.enabled && status.modelLabel) {
+      this.#options.events.emit('generation:ready', { modelLabel: status.modelLabel });
+    }
+    return status;
+  }
+
+  async generationStatus(): Promise<GenerationStatus> {
+    await this.start();
+    return await this.#call<GenerationStatus>(WORKER.generationStatus);
   }
 
   async revalidate(): Promise<RevalidateResult> {
@@ -158,6 +202,7 @@ export class Orchestrator {
     this.#starting = null;
     this.#preparing = null;
     this.#init = null;
+    this.#streams.clear();
   }
 
   /**

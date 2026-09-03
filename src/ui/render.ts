@@ -1,16 +1,18 @@
-import type { AskResult, Citation, Suggestion } from '../engine/protocol.js';
+import { splitCitations } from '../chat/answer.js';
+import type { AskResult, Citation, GenerationStatus, Suggestion } from '../engine/protocol.js';
 
 /**
  * Turn rendering.
  *
- * Phase 1 has no language model, so an "answer" is the passages themselves,
- * each attributed to the section it came from. That is not a placeholder for
- * generation — it is the substrate generation will be constrained to, so what
- * is shown here is exactly what a later model will be allowed to say.
+ * Two shapes of answer. With a model loaded, prose with numbered citations and
+ * the passages it was written from underneath. Without one — a device that did
+ * not clear the WebGPU bar, or a visitor who declined the download — the
+ * passages alone. The second is not a degraded placeholder for the first: it is
+ * the evidence the first is constrained to, so both are honest answers.
  *
- * Everything is built with DOM calls rather than innerHTML: this text comes
- * from crawled pages, and assembling markup from it would be an injection
- * vector on the host's own site.
+ * Everything is built with DOM calls rather than innerHTML. This text comes
+ * from crawled pages and from a language model, and assembling markup out of
+ * either would be an injection vector on the host's own site.
  */
 
 export function userTurn(text: string): HTMLElement {
@@ -35,12 +37,41 @@ export function errorTurn(message: string): HTMLElement {
   return el;
 }
 
+/**
+ * A turn that grows as tokens arrive.
+ *
+ * Replaced wholesale by `answerTurn` once generation finishes: citation markers
+ * can only be linked when the source list is known, and half a marker is not
+ * something to render.
+ */
+export function streamingTurn(): { element: HTMLElement; append: (text: string) => void } {
+  const element = document.createElement('div');
+  element.className = 'turn turn-answer turn-streaming';
+
+  const paragraph = document.createElement('p');
+  paragraph.className = 'answer-text';
+  element.append(paragraph);
+
+  return {
+    element,
+    append: (text: string) => {
+      paragraph.append(document.createTextNode(text));
+    },
+  };
+}
+
 export function answerTurn(result: AskResult): HTMLElement {
   const el = document.createElement('div');
   el.className = 'turn turn-answer';
 
   if (!result.grounded) {
     el.append(notFound(result.suggestions));
+    return el;
+  }
+
+  if (result.answer) {
+    el.append(generated(result));
+    el.append(sourceList(result.sources.length > 0 ? result.sources : result.citations, 'Sources'));
     return el;
   }
 
@@ -51,13 +82,52 @@ export function answerTurn(result: AskResult): HTMLElement {
       ? 'Found this on the site:'
       : `Found ${result.citations.length} relevant passages:`;
   el.append(intro);
+  el.append(sourceList(result.citations, null));
+
+  return el;
+}
+
+/** Prose with its citation markers turned into links. */
+function generated(result: AskResult): HTMLElement {
+  const paragraph = document.createElement('p');
+  paragraph.className = 'answer-text';
+
+  for (const part of splitCitations(result.answer ?? '', result.sources.length)) {
+    if (part.kind === 'text') {
+      paragraph.append(document.createTextNode(part.text));
+      continue;
+    }
+    const source = result.sources[part.index - 1];
+    if (!source) continue;
+
+    const link = document.createElement('a');
+    link.className = 'answer-cite';
+    link.href = source.url;
+    link.rel = 'noopener noreferrer';
+    link.textContent = String(part.index);
+    link.title = breadcrumb(source);
+    paragraph.append(link);
+  }
+
+  return paragraph;
+}
+
+function sourceList(citations: readonly Citation[], label: string | null): HTMLElement {
+  const wrap = document.createElement('div');
+
+  if (label && citations.length > 0) {
+    const heading = document.createElement('p');
+    heading.className = 'answer-intro';
+    heading.textContent = label;
+    wrap.append(heading);
+  }
 
   const list = document.createElement('ol');
   list.className = 'citations';
-  for (const citation of result.citations) list.append(citationItem(citation));
-  el.append(list);
+  for (const citation of citations) list.append(citationItem(citation));
+  wrap.append(list);
 
-  return el;
+  return wrap;
 }
 
 function citationItem(citation: Citation): HTMLElement {
@@ -115,4 +185,41 @@ function notFound(suggestions: Suggestion[]): HTMLElement {
   wrap.append(list);
 
   return wrap;
+}
+
+/**
+ * The offer to load the generative model.
+ *
+ * The size is stated plainly and up front. A ~300MB download is a real cost to
+ * a visitor, and burying it would be the kind of thing that makes people
+ * distrust a widget they did not install.
+ */
+export function generationOffer(
+  status: GenerationStatus,
+  onEnable: () => void,
+): HTMLElement | null {
+  if (!status.available || status.enabled) return null;
+
+  const bar = document.createElement('div');
+  bar.className = 'offer';
+
+  const text = document.createElement('span');
+  text.className = 'offer-text';
+  text.textContent = status.cached
+    ? 'Written answers are ready to turn on.'
+    : `Get written answers instead of passages · ${formatBytes(status.approxBytes)} download`;
+
+  const button = document.createElement('button');
+  button.className = 'offer-button';
+  button.type = 'button';
+  button.textContent = status.cached ? 'Turn on' : 'Download';
+  button.addEventListener('click', onEnable);
+
+  bar.append(text, button);
+  return bar;
+}
+
+function formatBytes(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }

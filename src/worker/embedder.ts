@@ -1,3 +1,5 @@
+import { configureModelHost, loadLibrary, progressAdapter } from './library.js';
+
 /**
  * Text embedding, via transformers.js.
  *
@@ -14,24 +16,7 @@ export const DEFAULT_MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 export const DEFAULT_DTYPE = 'q8';
 export const DEFAULT_DIM = 384;
 
-/**
- * transformers.js is loaded at runtime rather than bundled.
- *
- * Bundling it drags in the ONNX runtime's `.wasm` binaries, and Vite's library
- * mode has no chunks to put them in, so it base64-inlines them straight into
- * the output — a 63MB worker for a 2MB library. Loading the module at runtime
- * leaves the runtime free to fetch its wasm normally, only when it is needed.
- *
- * The `+esm` endpoint matters: the raw `dist/` file ships bare specifiers like
- * `onnxruntime-web/webgpu`, which a browser cannot resolve without an import
- * map. `+esm` rewrites them to absolute URLs.
- *
- * Pinned to an exact version: an unpinned CDN specifier means a dependency can
- * change under a site that has not redeployed. Override it with
- * `data-library-url` when a Content-Security-Policy forbids this origin.
- */
-export const DEFAULT_LIBRARY_URL =
-  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/+esm';
+
 
 /** Model max sequence length is 256 word-piece tokens; longer input is truncated. */
 export const MAX_INPUT_CHARS = 2000;
@@ -141,62 +126,14 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-interface TransformersModule {
-  env: { allowLocalModels: boolean; remoteHost: string; remotePathTemplate: string };
-  pipeline: (task: string, model: string, options: Record<string, unknown>) => Promise<unknown>;
-}
-
-let libraryPromise: Promise<TransformersModule> | null = null;
-
-/** Load transformers.js once per worker. */
-async function loadLibrary(url: string): Promise<TransformersModule> {
-  libraryPromise ??= (async () => {
-    try {
-      // @vite-ignore keeps the bundler from trying to resolve and inline this.
-      return (await import(/* @vite-ignore */ url)) as TransformersModule;
-    } catch (error) {
-      libraryPromise = null;
-      throw new Error(
-        `could not load transformers.js from ${url}. ` +
-          'If this site sets a Content-Security-Policy, it must allow this origin in script-src, ' +
-          'or set data-library-url to a copy you host yourself. ' +
-          `Underlying error: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  })();
-  return await libraryPromise;
-}
-
 async function defaultPipeline(options: EmbedderOptions): Promise<EmbedPipeline> {
-  const { env, pipeline } = await loadLibrary(options.libraryUrl ?? DEFAULT_LIBRARY_URL);
-
-  // In a browser there is no local model directory to fall back on, and leaving
-  // this enabled produces a confusing 404 before the remote fetch is tried.
-  env.allowLocalModels = false;
-
-  if (options.modelBaseUrl) {
-    // Self-hosted weights, laid out as <base>/<model id>/<files>. Sites behind a
-    // strict CSP need this, since the HF CDN is usually not allowlisted.
-    env.remoteHost = options.modelBaseUrl.endsWith('/')
-      ? options.modelBaseUrl
-      : `${options.modelBaseUrl}/`;
-    env.remotePathTemplate = '{model}/';
-  }
+  const { env, pipeline } = await loadLibrary(options.libraryUrl ?? undefined);
+  configureModelHost(env, options.modelBaseUrl);
 
   const instance = await pipeline('feature-extraction', options.modelId ?? DEFAULT_MODEL_ID, {
-    dtype: (options.dtype ?? DEFAULT_DTYPE) as never,
-    device: (options.device ?? 'auto') as never,
-    progress_callback: options.onProgress
-      ? (report: unknown) => {
-          const p = report as { status?: string; file?: string; loaded?: number; total?: number };
-          if (p.status !== 'progress') return;
-          options.onProgress?.({
-            name: p.file ?? 'model',
-            loaded: p.loaded ?? 0,
-            total: p.total ?? 0,
-          });
-        }
-      : undefined,
+    dtype: options.dtype ?? DEFAULT_DTYPE,
+    device: options.device ?? 'auto',
+    progress_callback: progressAdapter(options.onProgress),
   });
 
   return instance as unknown as EmbedPipeline;

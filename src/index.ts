@@ -2,7 +2,7 @@ import { readScriptAttributes, resolveConfig } from './config.js';
 import { whenIdle } from './dom/idle.js';
 import { Emitter } from './engine/events.js';
 import { Orchestrator } from './engine/orchestrator.js';
-import type { AskResult, StatsResult } from './engine/protocol.js';
+import type { AskResult, GenerationStatus, StatsResult } from './engine/protocol.js';
 import type { Transport } from './engine/rpc.js';
 import type { WebAIConfig, WebAIEvent, WebAIEventMap, WebAIEventName } from './types.js';
 import { Widget } from './ui/widget.js';
@@ -64,11 +64,20 @@ export class WebAI {
     });
 
     if (config.widget) {
-      this.#widget = new Widget(config, this.#events);
-      this.#widget.onAsk = (query) => this.ask(query);
+      const widget = new Widget(config, this.#events);
+      this.#widget = widget;
+      widget.onAsk = (query, onToken) => this.#orchestrator!.ask(query, { onToken });
+      widget.onEnableGeneration = async () => {
+        await this.enableGeneration();
+      };
       // Opening the panel is the clearest signal of intent there is, so it
       // always starts the engine regardless of the preload setting.
-      this.#widget.onFirstOpen = () => void this.#orchestrator?.prepare().catch(() => {});
+      widget.onFirstOpen = () => {
+        void this.#orchestrator
+          ?.prepare()
+          .then(() => this.#refreshGenerationOffer())
+          .catch(() => {});
+      };
       this.#wireStatus();
 
       // If we booted from a parser-blocking script, <body> may not exist yet.
@@ -93,6 +102,50 @@ export class WebAI {
   async prepare(): Promise<void> {
     await this.boot();
     await this.#orchestrator?.prepare();
+    await this.#refreshGenerationOffer();
+  }
+
+  /**
+   * Load the generative model. This is the ~300MB download, so it happens only
+   * when something explicitly asks — the visitor clicking the offer, or a site
+   * that set `data-generate="auto"`.
+   */
+  async enableGeneration(): Promise<GenerationStatus | null> {
+    await this.boot();
+    if (this.#config?.generate === 'never') return null;
+
+    const status = (await this.#orchestrator?.enableGeneration()) ?? null;
+    if (status) this.#widget?.showGenerationOffer(status);
+    return status;
+  }
+
+  async generationStatus(): Promise<GenerationStatus | null> {
+    await this.boot();
+    return (await this.#orchestrator?.generationStatus()) ?? null;
+  }
+
+  /**
+   * Decide whether to show the offer, download immediately, or say nothing.
+   *
+   * A model already in the browser cache costs nothing to turn on, so a
+   * returning visitor is not asked to approve a download they already made.
+   */
+  async #refreshGenerationOffer(): Promise<void> {
+    const config = this.#config;
+    if (!config || config.generate === 'never' || !this.#widget) return;
+
+    try {
+      const status = await this.#orchestrator!.generationStatus();
+      if (!status.available) return;
+
+      if (config.generate === 'auto' || status.cached) {
+        await this.enableGeneration();
+        return;
+      }
+      this.#widget.showGenerationOffer(status);
+    } catch {
+      // No offer is a fine outcome; retrieval-only answers still work.
+    }
   }
 
   async stats(): Promise<StatsResult | null> {
@@ -148,6 +201,7 @@ export class WebAI {
     this.#events.on('index:done', ({ pages }) => {
       widget.setStatus(pages > 0 ? `${pages} pages indexed` : 'Ready');
     });
+    this.#events.on('generation:ready', ({ modelLabel }) => widget.setStatus(`${modelLabel} ready`));
     this.#events.on('error', ({ message }) => widget.setStatus(message));
   }
 

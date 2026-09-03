@@ -1,10 +1,12 @@
-import type { Position, Preload, Theme, Tier, WebAIConfig } from './types.js';
+import type { Generate, Position, Preload, Theme, Tier, WebAIConfig } from './types.js';
 import { TIERS } from './types.js';
 
 export const DEFAULT_CONFIG: WebAIConfig = {
   sitemapUrl: '/sitemap.xml',
   maxTier: 'small',
   modelBaseUrl: null,
+  libraryUrl: null,
+  generate: 'ask',
   indexUrl: null,
   maxPages: 500,
   version: null,
@@ -118,6 +120,8 @@ export function resolveConfig(
       new URL(d.sitemapUrl, base).href,
     maxTier: pickEnum<Tier>(attrs['maxTier'], TIERS, d.maxTier, 'data-max-tier', warnings),
     modelBaseUrl: pickUrl(attrs['modelBaseUrl'], d.modelBaseUrl, base, 'data-model-base-url', warnings),
+    libraryUrl: pickUrl(attrs['libraryUrl'], d.libraryUrl, base, 'data-library-url', warnings),
+    generate: pickEnum<Generate>(attrs['generate'], ['ask', 'auto', 'never'], d.generate, 'data-generate', warnings),
     indexUrl: pickUrl(attrs['index'], d.indexUrl, base, 'data-index', warnings, { warnCrossOrigin: true }),
     maxPages: pickInt(attrs['maxPages'], d.maxPages, MAX_PAGES_RANGE, 'data-max-pages', warnings),
     version: attrs['version']?.trim() || d.version,

@@ -1,7 +1,7 @@
-import type { AskResult } from '../engine/protocol.js';
+import type { AskResult, GenerationStatus } from '../engine/protocol.js';
 import type { Emitter } from '../engine/events.js';
 import type { WebAIConfig } from '../types.js';
-import { answerTurn, errorTurn, pendingTurn, userTurn } from './render.js';
+import { answerTurn, errorTurn, generationOffer, pendingTurn, streamingTurn, userTurn } from './render.js';
 import { styles } from './theme.js';
 
 const HOST_TAG = 'web-ai-root';
@@ -28,12 +28,15 @@ export class Widget {
   #input!: HTMLTextAreaElement;
   #send!: HTMLButtonElement;
 
+  #offerSlot!: HTMLElement;
   #open = false;
   #busy = false;
   #lastFocused: Element | null = null;
 
   /** Set by the orchestrator. Returning a rejected promise renders an error turn. */
-  onAsk: ((query: string) => Promise<AskResult>) | null = null;
+  onAsk: ((query: string, onToken: (text: string) => void) => Promise<AskResult>) | null = null;
+  /** Loads the generative model. Resolves once it is ready to answer. */
+  onEnableGeneration: (() => Promise<void>) | null = null;
   /** Called the first time the panel opens, so heavy work can start on demand. */
   onFirstOpen: (() => void) | null = null;
   #hasOpened = false;
@@ -102,19 +105,56 @@ export class Widget {
 
     this.#setBusy(true);
     this.#append(userTurn(trimmed));
-    const pending = this.#append(pendingTurn());
+    let turn = this.#append(pendingTurn());
+    let stream: ReturnType<typeof streamingTurn> | null = null;
+
+    // The first token is the moment the answer stops being a search and starts
+    // being a reply, so the "searching" turn is swapped out then and not before.
+    const onToken = (text: string): void => {
+      if (!stream) {
+        stream = streamingTurn();
+        turn.replaceWith(stream.element);
+        turn = stream.element;
+      }
+      stream.append(text);
+      this.#scroll();
+    };
 
     try {
-      const result = await this.onAsk?.(trimmed);
-      pending.replaceWith(result ? answerTurn(result) : errorTurn('The assistant is not ready yet.'));
+      const result = await this.onAsk?.(trimmed, onToken);
+      // Replaced rather than kept: markers can only be linked once the source
+      // list is known, and a partial marker is not worth rendering.
+      turn.replaceWith(result ? answerTurn(result) : errorTurn('The assistant is not ready yet.'));
     } catch (error) {
-      pending.replaceWith(
+      turn.replaceWith(
         errorTurn(error instanceof Error ? error.message : 'Something went wrong searching this site.'),
       );
     } finally {
       this.#setBusy(false);
+      this.#scroll();
       this.#input.focus();
     }
+  }
+
+  /**
+   * Show or hide the offer to download the generative model.
+   *
+   * Called whenever the engine's view of it changes: on open, and again after
+   * the download completes.
+   */
+  showGenerationOffer(status: GenerationStatus): void {
+    this.#offerSlot.replaceChildren();
+
+    const offer = generationOffer(status, () => {
+      this.#offerSlot.replaceChildren(pendingTurn('Loading the model…'));
+      void this.onEnableGeneration?.().catch((error: unknown) => {
+        this.#offerSlot.replaceChildren(
+          errorTurn(error instanceof Error ? error.message : 'The model could not be loaded.'),
+        );
+      });
+    });
+
+    if (offer) this.#offerSlot.append(offer);
   }
 
   #setBusy(busy: boolean): void {
@@ -125,8 +165,12 @@ export class Widget {
 
   #append(el: HTMLElement): HTMLElement {
     this.#transcript.append(el);
-    this.#transcript.scrollTop = this.#transcript.scrollHeight;
+    this.#scroll();
     return el;
+  }
+
+  #scroll(): void {
+    this.#transcript.scrollTop = this.#transcript.scrollHeight;
   }
 
   #render(): void {
@@ -152,7 +196,10 @@ export class Widget {
       }
     });
 
-    this.#panel.append(this.#header(), this.#body(), this.#composer());
+    this.#offerSlot = document.createElement('div');
+    this.#offerSlot.className = 'offer-slot';
+
+    this.#panel.append(this.#header(), this.#body(), this.#offerSlot, this.#composer());
     this.#root.append(style, this.#bubble, this.#panel);
   }
 

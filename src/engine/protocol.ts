@@ -14,6 +14,8 @@ export const WORKER = {
   init: 'worker:init',
   ensureManifest: 'worker:ensureManifest',
   ask: 'worker:ask',
+  enableGeneration: 'worker:enableGeneration',
+  generationStatus: 'worker:generationStatus',
   revalidate: 'worker:revalidate',
   stats: 'worker:stats',
 } as const;
@@ -27,6 +29,7 @@ export const HOST = {
 /** Fire-and-forget notifications from the worker. */
 export const EVENT = {
   modelProgress: 'evt:modelProgress',
+  token: 'evt:token',
   indexStart: 'evt:indexStart',
   indexProgress: 'evt:indexProgress',
   indexDone: 'evt:indexDone',
@@ -39,6 +42,7 @@ export interface InitParams {
   sitemapUrl: string;
   maxTier: Tier;
   modelBaseUrl: string | null;
+  libraryUrl: string | null;
   maxPages: number;
   siteVersion: string | null;
 }
@@ -71,6 +75,26 @@ export interface AskParams {
   currentUrl: string;
   /** Cap on pages fetched just-in-time to answer this one question. */
   maxFetch?: number;
+  /** Correlates streamed tokens with the call that produced them. */
+  requestId?: string;
+}
+
+/** One streamed fragment of a generated answer. */
+export interface TokenEvent {
+  requestId: string;
+  text: string;
+}
+
+export interface GenerationStatus {
+  /** False on a device that did not clear the WebGPU bar. */
+  available: boolean;
+  /** True once the model is loaded in this session. */
+  enabled: boolean;
+  /** True when the weights are already in the browser cache, so enabling is instant. */
+  cached: boolean;
+  modelLabel: string | null;
+  approxBytes: number;
+  reason: string;
 }
 
 export interface Citation {
@@ -98,6 +122,17 @@ export interface AskResult {
   /** URLs fetched just-in-time while answering. */
   fetched: string[];
   tookMs: number;
+  /**
+   * Generated prose, when a model produced a usable one. Null means fall back
+   * to showing the passages themselves — which is what happens on a
+   * retrieval-only device, and also when the model refused despite retrieval
+   * having found something above the floor.
+   */
+  answer: string | null;
+  /** The citations the model was actually shown, in the order it saw them. */
+  sources: Citation[];
+  /** 1-based source numbers the answer cites. */
+  cited: number[];
 }
 
 export interface RevalidateResult {

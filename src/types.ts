@@ -17,6 +17,15 @@ export type Preload = 'idle' | 'open' | 'never';
 export type Position = 'bottom-right' | 'bottom-left';
 export type Theme = 'auto' | 'light' | 'dark';
 
+/**
+ * How eagerly to load the generative model.
+ *
+ * `ask` is the default because the model is a ~300MB download. Spending that
+ * much of a visitor's connection without being asked is not defensible, so the
+ * widget offers it and they decide once.
+ */
+export type Generate = 'ask' | 'auto' | 'never';
+
 export interface WebAIConfig {
   /** Where the site's URL manifest lives. Resolved against the document base URL. */
   sitemapUrl: string;
@@ -27,6 +36,10 @@ export interface WebAIConfig {
   maxTier: Tier;
   /** Base URL to load model weights from. `null` uses the transformers.js default (HF CDN). */
   modelBaseUrl: string | null;
+  /** Where to load the transformers.js module from. `null` uses the pinned CDN default. */
+  libraryUrl: string | null;
+  /** Whether written answers are offered, loaded immediately, or disabled. */
+  generate: Generate;
   /** A prebuilt static index to try before crawling anything. */
   indexUrl: string | null;
   /** Cap on how many sitemap URLs enter the routing manifest. */
@@ -53,6 +66,8 @@ export type WebAIEventMap = {
   'index:progress': { done: number; total: number; url?: string };
   'index:done': { pages: number; chunks: number; fromCache: boolean };
   'model:progress': { name: string; loaded: number; total: number };
+  'generation:ready': { modelLabel: string };
+  'answer:token': { requestId: string; text: string };
   'open': Record<string, never>;
   'close': Record<string, never>;
   'error': { scope: string; message: string; cause?: unknown };

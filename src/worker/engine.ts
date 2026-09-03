@@ -9,6 +9,7 @@ import type {
   IndexProgress,
   InitParams,
   InitResult,
+  GenerationStatus,
   RevalidateResult,
   StatsResult,
   Suggestion,
@@ -19,8 +20,11 @@ import { HybridIndex } from '../knowledge/hybrid.js';
 import { KnowledgeStore, type StoredManifestEntry, type StoredPage, buildCacheKey } from '../knowledge/store.js';
 import type { Chunk, ExtractedPage } from '../knowledge/types.js';
 import type { Tier } from '../types.js';
+import { processAnswer, statesUnsupportedNumber } from '../chat/answer.js';
+import { buildPrompt } from '../chat/prompt.js';
 import { type Capabilities, probe as probeCapabilities, selectTier } from './capabilities.js';
 import { Embedder, type EmbedderOptions } from './embedder.js';
+import { Generator, type GeneratorOptions, modelForTier } from './generator.js';
 
 /**
  * The indexing and retrieval engine.
@@ -67,6 +71,8 @@ export interface EngineDeps {
   manifest(): Promise<HostManifestResult>;
   notify(type: string, payload: unknown): void;
   loadEmbedder?(options: EmbedderOptions): Promise<Embedder>;
+  loadGenerator?(options: GeneratorOptions): Promise<Generator>;
+  isGeneratorCached?(modelId: string): Promise<boolean>;
   openStore?(cacheKey: string): Promise<KnowledgeStore>;
   probe?(): Promise<Capabilities>;
 }
@@ -89,6 +95,7 @@ export class Engine {
   #pages = new Map<string, StoredPage>();
 
   #currentPageIndexed = false;
+  #generator: Generator | null = null;
 
   private constructor(
     params: InitParams,
@@ -238,13 +245,22 @@ export class Engine {
    * are worth pulling in, and retrieval runs again. Fetching is capped so one
    * question cannot turn into a crawl of the whole site.
    */
-  async ask({ query, currentUrl, maxFetch = 3 }: AskParams): Promise<AskResult> {
+  async ask({ query, currentUrl, maxFetch = 3, requestId }: AskParams): Promise<AskResult> {
     const started = Date.now();
     const fetched: string[] = [];
 
     const trimmed = query.trim();
     if (trimmed.length === 0) {
-      return { grounded: false, citations: [], suggestions: [], fetched, tookMs: 0 };
+      return {
+        grounded: false,
+        citations: [],
+        suggestions: [],
+        fetched,
+        tookMs: 0,
+        answer: null,
+        sources: [],
+        cited: [],
+      };
     }
 
     const queryVector = await this.#embedder.embedOne(trimmed);
@@ -302,6 +318,8 @@ export class Engine {
       });
     }
 
+    const written = await this.#write(trimmed, citations, requestId);
+
     return {
       grounded: citations.length > 0,
       citations,
@@ -310,6 +328,7 @@ export class Engine {
       suggestions: citations.length > 0 ? [] : this.#suggest(queryVector, trimmed),
       fetched,
       tookMs: Date.now() - started,
+      ...written,
     };
   }
 
@@ -349,6 +368,56 @@ export class Engine {
 
     await this.#store.setMeta({ revalidatedAt: Date.now() });
     return { checked: pages.length, changed, removed };
+  }
+
+  /**
+   * Load the generative model.
+   *
+   * Separate from `init` on purpose: this is a ~300MB download, and the
+   * visitor decides whether to spend it. Idempotent — a second call returns
+   * the already-loaded model.
+   */
+  async enableGeneration(): Promise<GenerationStatus> {
+    const model = modelForTier(this.#tier);
+    if (!model) return await this.generationStatus();
+    if (this.#generator) return await this.generationStatus();
+
+    const load = this.#deps.loadGenerator ?? ((options: GeneratorOptions) => Generator.load(options));
+    this.#generator = await load({
+      model,
+      modelBaseUrl: this.#params.modelBaseUrl,
+      libraryUrl: this.#params.libraryUrl,
+      onProgress: (progress) => this.#deps.notify(EVENT.modelProgress, progress),
+    });
+
+    return await this.generationStatus();
+  }
+
+  async generationStatus(): Promise<GenerationStatus> {
+    const model = modelForTier(this.#tier);
+    if (!model) {
+      return {
+        available: false,
+        enabled: false,
+        cached: false,
+        modelLabel: null,
+        approxBytes: 0,
+        reason: this.#tierReason,
+      };
+    }
+
+    const isCached =
+      this.#deps.isGeneratorCached ?? (() => Generator.isCached(model, this.#params.libraryUrl));
+
+    return {
+      available: true,
+      enabled: this.#generator !== null,
+      // A returning visitor already paid for the download; asking again is noise.
+      cached: this.#generator !== null || (await isCached(model.id)),
+      modelLabel: model.label,
+      approxBytes: model.approxBytes,
+      reason: this.#tierReason,
+    };
   }
 
   stats(): StatsResult {
@@ -430,6 +499,61 @@ export class Engine {
     this.#manifest.set(page.url, upgraded);
     this.#routeIndex.add(page.url, text, upgraded.vector);
     await this.#store.putManifest([...this.#manifest.values()]);
+  }
+
+  /**
+   * Turn retrieved passages into prose, when a model is loaded.
+   *
+   * Note what this cannot do: it only ever sees passages retrieval already
+   * cleared, so there is no path where the model answers from its own
+   * knowledge. The worst it can do is misread a passage the reader can see
+   * directly underneath.
+   */
+  async #write(
+    query: string,
+    citations: Citation[],
+    requestId: string | undefined,
+  ): Promise<Pick<AskResult, 'answer' | 'sources' | 'cited'>> {
+    const empty = { answer: null, sources: [] as Citation[], cited: [] as number[] };
+    if (!this.#generator || citations.length === 0) return empty;
+
+    const { messages, sources } = buildPrompt(query, citations);
+
+    try {
+      const raw = await this.#generator.generate(messages, {
+        onToken: requestId
+          ? (text) => this.#deps.notify(EVENT.token, { requestId, text })
+          : undefined,
+      });
+
+      const processed = processAnswer(raw, sources.length);
+
+      // The model refusing does not overrule retrieval. Those passages already
+      // cleared the relevance floor, and small models refuse spuriously — so
+      // fall back to showing the passages rather than claiming nothing was
+      // found. Never the other way round: retrieval refusing is final.
+      if (processed.refused) return { ...empty, sources };
+
+      // A figure that is not in the sources was invented. Showing the passages
+      // instead is strictly better than a fluent answer with a wrong number in
+      // it, which is the failure a reader is least likely to catch.
+      if (statesUnsupportedNumber(processed.text, sources.map((s) => s.body).join(' '))) {
+        this.#deps.notify(EVENT.error, {
+          scope: 'generate',
+          message: 'answer stated a figure absent from its sources; showing passages instead',
+        });
+        return { ...empty, sources };
+      }
+
+      return { answer: processed.text, sources, cited: processed.cited };
+    } catch (error) {
+      // Generation is an enhancement over the passages, never a prerequisite.
+      this.#deps.notify(EVENT.error, {
+        scope: 'generate',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return { ...empty, sources };
+    }
   }
 
   /** Replace the routing index wholesale from a set of manifest entries. */
