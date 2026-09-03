@@ -25,27 +25,42 @@ const STOPWORDS = new Set([
   'with', 'you', 'your',
 ]);
 
+/** `v3`, `v12` — a version marker written the way documentation writes it. */
+const VERSION_MARKER = /^v(\d+)$/;
+/** How people say the same thing out loud. */
+const VERSION_WORD = /^(?:version|ver|v)$/;
+
 export function tokenize(text: string, { keepStopwords = false } = {}): string[] {
-  const out: string[] = [];
+  const raw: string[] = [];
   for (const match of text.toLowerCase().matchAll(TOKEN)) {
-    const token = match[0];
-    if (token.length > 64) continue;
-
-    const isCompound = /[.\-_/]/.test(token);
-    if (!isCompound) {
-      if (keepStopwords || !STOPWORDS.has(token)) out.push(token);
-      continue;
-    }
-
-    // Keep the compound whole so an exact query can match it outright...
-    out.push(token);
-    // ...and also index its parts so half a query still finds it.
-    for (const part of token.split(/[.\-_/]/)) {
-      if (part.length === 0) continue;
-      if (!keepStopwords && STOPWORDS.has(part)) continue;
-      out.push(part);
-    }
+    if (match[0].length <= 64) raw.push(match[0]);
   }
+
+  const out: string[] = [];
+  const emit = (token: string): void => {
+    if (token.length === 0) return;
+    if (!keepStopwords && STOPWORDS.has(token)) return;
+    out.push(token);
+  };
+
+  raw.forEach((token, i) => {
+    const isCompound = /[.\-_/]/.test(token);
+    // Keep the compound whole so an exact query can match it outright, and also
+    // index its parts so half a query still finds it.
+    const parts = isCompound ? [token, ...token.split(/[.\-_/]/)] : [token];
+    for (const part of parts) emit(part);
+
+    // Documentation writes "v3.0.0"; people ask about "version 3". Neither form
+    // shares a token with the other, so both are normalised toward each other.
+    // Applied to documents and queries alike, so the bridge works either way.
+    for (const part of parts) {
+      const marker = VERSION_MARKER.exec(part);
+      if (marker) emit(marker[1]!);
+    }
+    const next = raw[i + 1];
+    if (VERSION_WORD.test(token) && next && /^\d+$/.test(next)) emit(`v${next}`);
+  });
+
   return out;
 }
 

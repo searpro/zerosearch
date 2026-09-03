@@ -1,27 +1,42 @@
+import type { AskResult } from '../engine/protocol.js';
 import type { Emitter } from '../engine/events.js';
 import type { WebAIConfig } from '../types.js';
+import { answerTurn, errorTurn, pendingTurn, userTurn } from './render.js';
 import { styles } from './theme.js';
 
 const HOST_TAG = 'web-ai-root';
 
 /**
- * The widget shell: a floating bubble that opens a panel.
+ * The widget: a floating bubble that opens a panel with a composer and a
+ * transcript.
  *
  * Everything lives inside a shadow root so the host page's CSS cannot reach in
- * and our CSS cannot leak out. Phase 0 renders a placeholder body; the message
- * list lands in Phase 1.
+ * and ours cannot leak out. The widget knows nothing about indexing or
+ * retrieval — it calls `onAsk` and renders whatever comes back — which is what
+ * keeps the headless API and this UI honest about sharing one engine.
  */
 export class Widget {
   #config: WebAIConfig;
   #events: Emitter;
   #host: HTMLElement;
   #root: ShadowRoot;
+
   #bubble!: HTMLButtonElement;
   #panel!: HTMLElement;
   #status!: HTMLElement;
-  #body!: HTMLElement;
+  #transcript!: HTMLElement;
+  #input!: HTMLTextAreaElement;
+  #send!: HTMLButtonElement;
+
   #open = false;
+  #busy = false;
   #lastFocused: Element | null = null;
+
+  /** Set by the orchestrator. Returning a rejected promise renders an error turn. */
+  onAsk: ((query: string) => Promise<AskResult>) | null = null;
+  /** Called the first time the panel opens, so heavy work can start on demand. */
+  onFirstOpen: (() => void) | null = null;
+  #hasOpened = false;
 
   constructor(config: WebAIConfig, events: Emitter) {
     this.#config = config;
@@ -53,8 +68,13 @@ export class Widget {
     this.#lastFocused = document.activeElement;
     this.#bubble.hidden = true;
     this.#panel.hidden = false;
-    this.#panel.querySelector<HTMLElement>('.close')?.focus();
+    this.#input.focus();
     this.#events.emit('open', {});
+
+    if (!this.#hasOpened) {
+      this.#hasOpened = true;
+      this.onFirstOpen?.();
+    }
   }
 
   close(): void {
@@ -62,7 +82,6 @@ export class Widget {
     this.#open = false;
     this.#panel.hidden = true;
     this.#bubble.hidden = false;
-    // Send focus back where it came from, else it lands on <body>.
     const target = this.#lastFocused instanceof HTMLElement ? this.#lastFocused : this.#bubble;
     target.focus();
     this.#events.emit('close', {});
@@ -72,9 +91,42 @@ export class Widget {
     this.#open ? this.close() : this.open();
   }
 
-  /** Single line of state under the title — loading progress, errors, and so on. */
+  /** Single line of state under the title: loading progress, errors, counts. */
   setStatus(text: string): void {
     this.#status.textContent = text;
+  }
+
+  async submit(query: string): Promise<void> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0 || this.#busy) return;
+
+    this.#setBusy(true);
+    this.#append(userTurn(trimmed));
+    const pending = this.#append(pendingTurn());
+
+    try {
+      const result = await this.onAsk?.(trimmed);
+      pending.replaceWith(result ? answerTurn(result) : errorTurn('The assistant is not ready yet.'));
+    } catch (error) {
+      pending.replaceWith(
+        errorTurn(error instanceof Error ? error.message : 'Something went wrong searching this site.'),
+      );
+    } finally {
+      this.#setBusy(false);
+      this.#input.focus();
+    }
+  }
+
+  #setBusy(busy: boolean): void {
+    this.#busy = busy;
+    this.#send.disabled = busy;
+    this.#input.disabled = busy;
+  }
+
+  #append(el: HTMLElement): HTMLElement {
+    this.#transcript.append(el);
+    this.#transcript.scrollTop = this.#transcript.scrollHeight;
+    return el;
   }
 
   #render(): void {
@@ -93,7 +145,18 @@ export class Widget {
     this.#panel.hidden = true;
     this.#panel.setAttribute('role', 'dialog');
     this.#panel.setAttribute('aria-label', 'Site assistant');
+    this.#panel.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        this.close();
+      }
+    });
 
+    this.#panel.append(this.#header(), this.#body(), this.#composer());
+    this.#root.append(style, this.#bubble, this.#panel);
+  }
+
+  #header(): HTMLElement {
     const header = document.createElement('div');
     header.className = 'header';
 
@@ -112,23 +175,59 @@ export class Widget {
     close.addEventListener('click', () => this.close());
 
     header.append(title, this.#status, close);
+    return header;
+  }
 
-    this.#body = document.createElement('div');
-    this.#body.className = 'body';
-    const placeholder = document.createElement('p');
-    placeholder.className = 'placeholder';
-    placeholder.textContent = 'Not wired up yet.';
-    this.#body.append(placeholder);
+  #body(): HTMLElement {
+    const body = document.createElement('div');
+    body.className = 'body';
 
-    this.#panel.append(header, this.#body);
-    this.#panel.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        this.close();
+    this.#transcript = document.createElement('div');
+    this.#transcript.className = 'transcript';
+    // Answers arrive asynchronously, so a screen reader needs to be told.
+    this.#transcript.setAttribute('aria-live', 'polite');
+
+    const hint = document.createElement('p');
+    hint.className = 'placeholder';
+    hint.textContent = 'Ask a question and I will answer from this site’s own pages.';
+    this.#transcript.append(hint);
+
+    body.append(this.#transcript);
+    return body;
+  }
+
+  #composer(): HTMLElement {
+    const form = document.createElement('form');
+    form.className = 'composer';
+
+    this.#input = document.createElement('textarea');
+    this.#input.className = 'input';
+    this.#input.rows = 1;
+    this.#input.placeholder = 'Ask a question…';
+    this.#input.setAttribute('aria-label', 'Ask a question about this site');
+
+    this.#input.addEventListener('keydown', (event) => {
+      // Enter sends; Shift+Enter is a newline, as everywhere else.
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
       }
     });
 
-    this.#root.append(style, this.#bubble, this.#panel);
+    this.#send = document.createElement('button');
+    this.#send.className = 'send';
+    this.#send.type = 'submit';
+    this.#send.textContent = 'Ask';
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const query = this.#input.value;
+      this.#input.value = '';
+      void this.submit(query);
+    });
+
+    form.append(this.#input, this.#send);
+    return form;
   }
 }
 

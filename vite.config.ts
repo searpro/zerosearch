@@ -36,9 +36,14 @@ const targets = {
     name: 'WebAI',
     empty: false,
   },
+  // ES module, not IIFE. An IIFE cannot code-split, so Rollup inlines every
+  // asset reached through `new URL(..., import.meta.url)` — which for the ONNX
+  // runtime means base64-encoding its .wasm binaries straight into the bundle
+  // and turning a ~2MB worker into a 63MB one. As a module the wasm stays a
+  // separate file the runtime fetches only when it actually needs it.
   worker: {
     entry: r('src/worker/worker.ts'),
-    formats: ['iife'] as const,
+    formats: ['es'] as const,
     fileName: () => 'web-ai.worker.js',
     name: 'WebAIWorker',
     empty: false,

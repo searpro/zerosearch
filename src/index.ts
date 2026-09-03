@@ -1,5 +1,9 @@
 import { readScriptAttributes, resolveConfig } from './config.js';
+import { whenIdle } from './dom/idle.js';
 import { Emitter } from './engine/events.js';
+import { Orchestrator } from './engine/orchestrator.js';
+import type { AskResult, StatsResult } from './engine/protocol.js';
+import type { Transport } from './engine/rpc.js';
 import type { WebAIConfig, WebAIEvent, WebAIEventMap, WebAIEventName } from './types.js';
 import { Widget } from './ui/widget.js';
 
@@ -14,6 +18,7 @@ export class WebAI {
   #events = new Emitter((error) => this.#log('a listener threw', error));
   #config: WebAIConfig | null = null;
   #widget: Widget | null = null;
+  #orchestrator: Orchestrator | null = null;
   #booting: Promise<void> | null = null;
   #scriptEl: HTMLScriptElement | null = null;
 
@@ -26,8 +31,9 @@ export class WebAI {
   }
 
   /**
-   * Resolve config, mount the widget. Idempotent: repeat calls return the
-   * in-flight or already-settled boot rather than starting a second one.
+   * Resolve config and mount the widget. Cheap by design: no worker, no model
+   * and no network happen here, so a page that embeds the script but is never
+   * interacted with pays almost nothing.
    */
   boot(overrides: Partial<WebAIConfig> = {}): Promise<void> {
     this.#booting ??= this.#boot(overrides).catch((error: unknown) => {
@@ -49,14 +55,55 @@ export class WebAI {
     }
     this.#log('config', config);
 
+    const worker = this.#workerTarget();
+    this.#orchestrator = new Orchestrator({
+      config,
+      workerUrl: worker.url,
+      events: this.#events,
+      createWorker: (url) => new Worker(url, { type: worker.type }) as unknown as Transport,
+    });
+
     if (config.widget) {
       this.#widget = new Widget(config, this.#events);
+      this.#widget.onAsk = (query) => this.ask(query);
+      // Opening the panel is the clearest signal of intent there is, so it
+      // always starts the engine regardless of the preload setting.
+      this.#widget.onFirstOpen = () => void this.#orchestrator?.prepare().catch(() => {});
+      this.#wireStatus();
+
       // If we booted from a parser-blocking script, <body> may not exist yet.
       await domReady();
       this.#widget.mount();
     }
 
-    this.#events.emit('ready', { tier: 'retrieval' });
+    if (config.preload === 'idle') {
+      // Behind the browser's own work: the visitor came for the page, not for us.
+      void whenIdle(3000).then(() => this.#orchestrator?.prepare().catch(() => {}));
+    }
+  }
+
+  /** Ask a question. Starts the engine on demand if it is not running yet. */
+  async ask(query: string): Promise<AskResult> {
+    await this.boot();
+    if (!this.#orchestrator) throw new Error('web-ai failed to boot');
+    return await this.#orchestrator.ask(query);
+  }
+
+  /** Load the model and routing manifest without asking anything. */
+  async prepare(): Promise<void> {
+    await this.boot();
+    await this.#orchestrator?.prepare();
+  }
+
+  async stats(): Promise<StatsResult | null> {
+    await this.boot();
+    return (await this.#orchestrator?.stats()) ?? null;
+  }
+
+  /** Re-check indexed pages against the server and re-index what changed. */
+  async revalidate(): Promise<void> {
+    await this.boot();
+    await this.#orchestrator?.revalidate();
   }
 
   open(): void {
@@ -81,18 +128,48 @@ export class WebAI {
   }
 
   destroy(): void {
+    this.#orchestrator?.destroy();
     this.#widget?.destroy();
+    this.#orchestrator = null;
     this.#widget = null;
     this.#events.clear();
     this.#booting = null;
   }
 
-  /** Where `web-ai.worker.js` should be fetched from, given how we were loaded. */
-  workerUrl(): string | null {
-    if (this.#config?.workerUrl) return this.#config.workerUrl;
+  /** Keep the widget's status line in step with what the engine is doing. */
+  #wireStatus(): void {
+    const widget = this.#widget;
+    if (!widget) return;
+
+    this.#events.on('model:progress', ({ loaded, total }) => {
+      if (total > 0) widget.setStatus(`Loading model ${Math.round((loaded / total) * 100)}%`);
+    });
+    this.#events.on('index:start', ({ urls }) => widget.setStatus(`Reading ${urls} pages…`));
+    this.#events.on('index:done', ({ pages }) => {
+      widget.setStatus(pages > 0 ? `${pages} pages indexed` : 'Ready');
+    });
+    this.#events.on('error', ({ message }) => widget.setStatus(message));
+  }
+
+  /**
+   * Where to load the worker from.
+   *
+   * In production the worker sits next to the script that loaded us. In
+   * development the script *is* the TypeScript source, so the worker is
+   * resolved as a module the dev server can transform.
+   */
+  #workerTarget(): { url: string; type: 'classic' | 'module' } {
+    // Always a module worker: the built worker is ES format so that the ONNX
+    // runtime's .wasm files stay separate assets instead of being base64-inlined.
+    if (this.#config?.workerUrl) return { url: this.#config.workerUrl, type: 'module' };
+
     const src = this.#scriptEl?.src;
-    if (!src) return null;
-    return new URL('./web-ai.worker.js', src).href;
+    // Test the pathname, not the whole URL: a dev server appends a cache-busting
+    // query string, which makes a naive extension check on `src` always fail.
+    if (src && !isTypeScript(src)) {
+      return { url: new URL('./web-ai.worker.js', src).href, type: 'module' };
+    }
+    return { url: new URL('./worker/worker.ts', import.meta.url).href, type: 'module' };
   }
 
   #log(...args: unknown[]): void {
@@ -102,6 +179,15 @@ export class WebAI {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** True when we were loaded from TypeScript source rather than from a build. */
+function isTypeScript(url: string): boolean {
+  try {
+    return /\.tsx?$/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -143,4 +229,6 @@ export default instance;
 export { Emitter } from './engine/events.js';
 export { DEFAULT_CONFIG, resolveConfig, readScriptAttributes } from './config.js';
 export { Widget } from './ui/widget.js';
+export { Orchestrator } from './engine/orchestrator.js';
 export type * from './types.js';
+export type * from './engine/protocol.js';

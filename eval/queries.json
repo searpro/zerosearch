@@ -1,0 +1,69 @@
+{
+  "$comment": "Golden retrieval set for the demo site. `expect` lists every page that genuinely answers the question — several facts appear in more than one place, and citing either is correct. `expect: null` means the site does not answer it and the assistant must refuse.",
+  "cases": [
+    {
+      "query": "how much does the team plan cost",
+      "expect": ["pricing.html"],
+      "note": "exact figure, single page"
+    },
+    {
+      "query": "what is MRD-4400",
+      "expect": ["contact.html"],
+      "note": "exact identifier — the case dense retrieval alone is worst at"
+    },
+    {
+      "query": "what happens if I exceed my ingest ceiling",
+      "expect": ["faq.html", "docs/limits.html"],
+      "note": "answer lives on a page whose URL slug says nothing about it"
+    },
+    {
+      "query": "what is the rate limit on the business plan",
+      "expect": ["docs/limits.html", "pricing.html"]
+    },
+    {
+      "query": "how do I rotate an API token",
+      "expect": ["docs/authentication.html"]
+    },
+    {
+      "query": "why did you choose a columnar layout",
+      "expect": ["blog/why-columnar.html", "index.html"]
+    },
+    {
+      "query": "what broke in version 3",
+      "expect": ["changelog.html", "blog/v3-launch.html"],
+      "note": "site writes v3, user says version 3 — vocabulary bridge"
+    },
+    {
+      "query": "how many people work there",
+      "expect": ["about.html"],
+      "note": "slug 'about' gives routing nothing to work with"
+    },
+    {
+      "query": "can I migrate from prometheus",
+      "expect": ["faq.html", "blog/v3-launch.html", "changelog.html"]
+    },
+    {
+      "query": "what is the max write request size",
+      "expect": ["docs/limits.html", "docs/api.html"],
+      "note": "same fact stated on two pages; either citation is correct"
+    },
+    {
+      "query": "what compression ratio do you get",
+      "expect": ["index.html", "blog/v3-launch.html"]
+    },
+    {
+      "query": "do you support single sign on",
+      "expect": ["docs/authentication.html", "pricing.html", "changelog.html"]
+    },
+    {
+      "query": "what is the best recipe for sourdough bread",
+      "expect": null,
+      "note": "must refuse — nothing on this site answers it"
+    },
+    {
+      "query": "who won the 1998 world cup",
+      "expect": null,
+      "note": "must refuse rather than answer from model knowledge"
+    }
+  ]
+}

@@ -13,18 +13,23 @@ test('boots from the script tag and installs the instance, not the namespace', a
     const w = (window as unknown as { WebAI?: Record<string, unknown> }).WebAI;
     return {
       type: typeof w,
-      ctor: w?.constructor?.name,
-      // The regression this guards: Vite assigning an IIFE's module namespace
-      // over the global would leave these undefined.
       open: typeof w?.['open'],
       onEvent: typeof w?.['onEvent'],
+      ask: typeof w?.['ask'],
+      // A module namespace would carry the class and the default export here.
+      // Asserting their absence pins the regression without depending on a
+      // class name, which minification renames in the production build.
+      namespaceClass: typeof w?.['WebAI'],
+      namespaceDefault: typeof w?.['default'],
     };
   });
 
   expect(api.type).toBe('object');
-  expect(api.ctor).toBe('WebAI');
   expect(api.open).toBe('function');
   expect(api.onEvent).toBe('function');
+  expect(api.ask).toBe('function');
+  expect(api.namespaceClass).toBe('undefined');
+  expect(api.namespaceDefault).toBe('undefined');
 });
 
 test('resolves data-* config against the document base', async ({ page }) => {

@@ -19,7 +19,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "node demo/build-demo.mjs && vite",
     "build": "npm run build:main && npm run build:lib && npm run build:worker && npm run build:types",
     "build:main": "vite build --mode main",
     "build:worker": "vite build --mode worker",
@@ -27,9 +27,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && npm run demo:dist && playwright test",
     "size": "node scripts/check-size.mjs",
-    "build:lib": "vite build --mode lib"
+    "build:lib": "vite build --mode lib",
+    "demo:dist": "DEMO_SCRIPT=/dist/web-ai.js node demo/build-demo.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

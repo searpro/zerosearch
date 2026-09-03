@@ -103,7 +103,28 @@ describe('VectorIndex', () => {
 describe('tokenize', () => {
   it('keeps compound tokens whole and also emits their parts', () => {
     expect(tokenize('MRD-4400')).toEqual(['mrd-4400', 'mrd', '4400']);
-    expect(tokenize('v3.2.1')).toEqual(['v3.2.1', 'v3', '2', '1']);
+    // `3` comes from normalising the `v3` marker — see the version tests below.
+    expect(tokenize('v3.2.1')).toEqual(['v3.2.1', 'v3', '2', '1', '3']);
+  });
+
+  it('bridges "v3" and "version 3", which share no token otherwise', () => {
+    // Documentation writes one, people ask with the other. Normalising both
+    // toward each other is what lets either form find the other.
+    expect(tokenize('version 3')).toContain('v3');
+    expect(tokenize('v3')).toContain('3');
+
+    const doc = new Set(tokenize('Breaking changes in v3.0.0 of the product'));
+    const query = tokenize('what broke in version 3');
+    expect(query.some((term) => doc.has(term))).toBe(true);
+  });
+
+  it('normalises the abbreviated spellings too', () => {
+    expect(tokenize('ver 12')).toContain('v12');
+    expect(tokenize('v 2')).toContain('v2');
+  });
+
+  it('does not invent a version from an unrelated number', () => {
+    expect(tokenize('we have 34 people')).not.toContain('v34');
   });
 
   it('drops stopwords but keeps meaningful terms', () => {

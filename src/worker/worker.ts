@@ -1,25 +1,49 @@
+import {
+  HOST,
+  WORKER,
+  type AskParams,
+  type HostFetchParams,
+  type HostFetchResult,
+  type HostManifestResult,
+  type InitParams,
+} from '../engine/protocol.js';
+import { RpcPeer, type Transport } from '../engine/rpc.js';
+import { Engine } from './engine.js';
+
 /**
- * Worker entry.
+ * Worker entry: RPC wiring only.
  *
- * Owns everything expensive and everything stateful: transformers.js, the
- * embedder, the chunker, the index, and retrieval. It also drives the crawl
- * schedule — but it cannot do the crawling itself.
- *
- * Workers have no DOM: no `document`, no `DOMParser`, no
- * `createHTMLDocument`. Readability therefore cannot run here. Instead the
- * worker *asks* the main thread for a page and gets extracted text back, which
- * is also the faster arrangement — the browser's own HTML parser is native and
- * beats any JS parser we could bundle. See `tsconfig.worker.json`, which drops
- * the DOM lib so this constraint is enforced at compile time.
+ * All the behaviour lives in `Engine`, which is written against injected
+ * dependencies so it can be tested without a Worker, a network or a model
+ * download. This file exists to connect that engine to the message port and to
+ * the main thread's DOM services — page fetching, extraction and sitemap
+ * parsing, none of which a worker can do for itself.
  */
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
+const peer = new RpcPeer(ctx as unknown as Transport);
 
-ctx.addEventListener('message', (event: MessageEvent<unknown>) => {
-  const data = event.data;
-  if (typeof data === 'object' && data !== null && (data as { type?: unknown }).type === 'ping') {
-    ctx.postMessage({ type: 'pong', version: '0.0.0' });
-  }
+let engine: Engine | null = null;
+
+function require(): Engine {
+  if (!engine) throw new Error('engine is not initialised; call init first');
+  return engine;
+}
+
+peer.handle(WORKER.init, async (params: InitParams) => {
+  const created = await Engine.init(params, {
+    // The callbacks that need a DOM, answered on the main thread.
+    fetchPage: (fetchParams: HostFetchParams) => peer.call<HostFetchResult>(HOST.fetchPage, fetchParams),
+    manifest: () => peer.call<HostManifestResult>(HOST.manifest),
+    notify: (type, payload) => peer.notify(type, payload),
+  });
+  engine = created.engine;
+  return created.result;
 });
 
-ctx.postMessage({ type: 'worker:ready' });
+peer.handle(WORKER.ensureManifest, () => require().ensureManifest());
+peer.handle(WORKER.ask, (params: AskParams) => require().ask(params));
+peer.handle(WORKER.revalidate, () => require().revalidate());
+peer.handle(WORKER.stats, () => require().stats());
+
+ctx.postMessage({ w: 'evt', t: 'worker:ready', p: null });

@@ -118,7 +118,83 @@ ${config.theme === 'auto' ? '} }' : ''}
   color: var(--wa-muted);
   text-align: center;
   padding: 32px 16px;
+  margin: 0;
 }
+
+.transcript { display: flex; flex-direction: column; gap: 14px; }
+
+.turn { font-size: 14px; }
+.turn-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 12px 12px 2px 12px;
+  background: var(--wa-accent);
+  color: var(--wa-accent-fg);
+  overflow-wrap: anywhere;
+}
+.turn-pending { color: var(--wa-muted); font-style: italic; }
+.turn-error { color: #b4232b; }
+@media (prefers-color-scheme: dark) { .turn-error { color: #ff8a8a; } }
+
+.answer-intro { margin: 0 0 8px; color: var(--wa-muted); font-size: 13px; }
+.answer-empty { margin: 0 0 8px; }
+
+.citations, .suggestions { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+
+.citation {
+  padding: 10px 12px;
+  border: 1px solid var(--wa-border);
+  border-radius: 10px;
+  background: var(--wa-surface);
+}
+.citation-source {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wa-accent);
+  text-decoration: none;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+.citation-source:hover { text-decoration: underline; }
+.citation-body { margin: 0; overflow-wrap: anywhere; }
+
+.suggestions a { color: var(--wa-accent); }
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--wa-border);
+  background: var(--wa-surface);
+}
+.input {
+  flex: 1;
+  resize: none;
+  padding: 9px 11px;
+  border: 1px solid var(--wa-border);
+  border-radius: 9px;
+  background: var(--wa-bg);
+  color: var(--wa-fg);
+  font: inherit;
+  max-height: 120px;
+}
+.input:focus-visible { outline: 2px solid var(--wa-accent); outline-offset: -1px; }
+.input:disabled { opacity: .6; }
+
+.send {
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--wa-accent);
+  color: var(--wa-accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.send:disabled { opacity: .5; cursor: default; }
+.send:focus-visible { outline: 2px solid var(--wa-accent); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .bubble { transition: none; }

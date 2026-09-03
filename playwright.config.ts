@@ -17,7 +17,10 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: 'npm run dev',
+    // Plain `vite`, not `npm run dev` — that script regenerates the demo pages
+    // to load TypeScript source, which would undo `demo:dist` and quietly test
+    // the dev path instead of what actually ships.
+    command: 'npx vite',
     url: 'http://localhost:5173/demo/index.html',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
