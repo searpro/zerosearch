@@ -18,31 +18,46 @@ export interface GeneratorModel {
   /** Rough download size, shown to the visitor before they commit to it. */
   approxBytes: number;
   label: string;
+  /**
+   * Extra arguments for the model's chat template.
+   *
+   * The pipeline spreads `tokenizer_kwargs` into its `apply_chat_template`
+   * call, which is how a reasoning model is told not to reason: Qwen3 emits a
+   * `<think>` block by default, and with a 220-token budget it would spend the
+   * whole allowance thinking and return nothing.
+   */
+  templateOptions?: Record<string, unknown>;
 }
 
 /**
- * One model per tier. Both are instruction-tuned and small enough to load in a
- * browser; neither is good at reasoning, which is why the prompt asks only for
- * extraction and attribution rather than analysis.
+ * The model each tier loads.
  *
- * `q4`, not `q4f16`, despite `q4f16` being ~110MB smaller. Measured on this
- * stack, the f16 build of SmolLM2-360M generated an empty assistant turn every
- * time — no tokens, no error — which is the worst possible failure mode
- * because it looks exactly like a refusal. The f32-accumulation build works.
+ * Both tiers currently load the same model, because it is the only one measured
+ * to work. Scored on the golden set in `eval/queries.json`, warm index:
+ *
+ *   SmolLM2-360M  q4      8/11   <- shipped
+ *   SmolLM2-360M  q4f16   empty assistant turn, every time, no error
+ *   Qwen3-0.6B    q4      fails to allocate a session (std::bad_alloc)
+ *   Qwen3-0.6B    q4f16   1/11, echoes the prompt's worked example back
+ *
+ * Two things worth keeping in mind before changing this. `q4f16` is broken for
+ * both models on this stack — silently, which is the expensive kind. And the
+ * larger model was worse, not better: at 0.6B it neither fits at q4 nor follows
+ * the prompt at q4f16, so "use a bigger model" is not an available fix here.
+ *
+ * The tier still does real work: it decides whether generation is offered at
+ * all. `standard` exists so a validated larger model can be dropped in without
+ * touching anything else.
  */
+const SMOLLM2: Omit<GeneratorModel, 'label'> = {
+  id: 'onnx-community/SmolLM2-360M-Instruct-ONNX',
+  dtype: 'q4',
+  approxBytes: 386 * 1024 * 1024,
+};
+
 export const GENERATOR_MODELS: Record<Exclude<Tier, 'retrieval'>, GeneratorModel> = {
-  small: {
-    id: 'onnx-community/SmolLM2-360M-Instruct-ONNX',
-    dtype: 'q4',
-    approxBytes: 386 * 1024 * 1024,
-    label: 'SmolLM2 360M',
-  },
-  standard: {
-    id: 'onnx-community/Qwen3-0.6B-ONNX',
-    dtype: 'q4',
-    approxBytes: 450 * 1024 * 1024,
-    label: 'Qwen3 0.6B',
-  },
+  small: { ...SMOLLM2, label: 'SmolLM2 360M' },
+  standard: { ...SMOLLM2, label: 'SmolLM2 360M' },
 };
 
 export function modelForTier(tier: Tier): GeneratorModel | null {
@@ -134,6 +149,7 @@ export class Generator {
       max_new_tokens: maxNewTokens,
       do_sample: false,
       return_full_text: false,
+      ...(this.model.templateOptions ? { tokenizer_kwargs: this.model.templateOptions } : {}),
       ...(streamer ? { streamer } : {}),
     });
 

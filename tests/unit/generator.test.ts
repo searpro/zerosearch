@@ -49,8 +49,12 @@ describe('modelForTier', () => {
     }
   });
 
-  it('keeps the default tier cheaper than the opt-in one', () => {
-    expect(GENERATOR_MODELS.small.approxBytes).toBeLessThan(GENERATOR_MODELS.standard.approxBytes);
+  it('uses only the configuration measured to work', () => {
+    // Qwen3-0.6B could not allocate a session at q4 and echoed the prompt back
+    // at q4f16, so both tiers load the model that scored 8/11. See the note in
+    // generator.ts before changing this.
+    expect(GENERATOR_MODELS.standard.id).toBe(GENERATOR_MODELS.small.id);
+    expect(GENERATOR_MODELS.small.dtype).toBe('q4');
   });
 });
 
