@@ -1,9 +1,32 @@
 {
   "name": "zerosearch",
-  "version": "0.0.0",
-  "description": "AI site search with zero backend. Crawls, indexes and answers questions about the host site entirely in the visitor\u2019s browser via transformers.js.",
-  "type": "module",
+  "version": "0.1.0-preview.1",
+  "description": "AI site search with zero backend. Crawls, indexes and answers questions about the host site entirely in the visitor’s browser via transformers.js.",
+  "keywords": [
+    "site-search",
+    "search",
+    "ai",
+    "rag",
+    "embeddings",
+    "transformers-js",
+    "webgpu",
+    "web-worker",
+    "client-side",
+    "serverless",
+    "local-first",
+    "widget"
+  ],
   "license": "MIT",
+  "author": "Lijin Kurian",
+  "homepage": "https://searpro.github.io/zerosearch/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/searpro/zerosearch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/searpro/zerosearch/issues"
+  },
+  "type": "module",
   "main": "./dist/zerosearch.mjs",
   "module": "./dist/zerosearch.mjs",
   "types": "./dist/index.d.ts",
@@ -16,12 +39,14 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "node demo/build-demo.mjs && vite",
     "build": "npm run build:main && npm run build:lib && npm run build:worker && npm run build:types",
     "build:main": "vite build --mode main",
+    "build:lib": "vite build --mode lib",
     "build:worker": "vite build --mode worker",
     "build:types": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
@@ -29,8 +54,8 @@
     "test:watch": "vitest",
     "test:e2e": "npm run build && npm run demo:dist && playwright test",
     "size": "node scripts/check-size.mjs",
-    "build:lib": "vite build --mode lib",
-    "demo:dist": "DEMO_SCRIPT=/dist/zerosearch.js node demo/build-demo.mjs"
+    "demo:dist": "DEMO_SCRIPT=/dist/zerosearch.js node demo/build-demo.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build && npm run size"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

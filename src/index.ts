@@ -7,7 +7,13 @@ import type { Transport } from './engine/rpc.js';
 import type { ZeroSearchConfig, ZeroSearchEvent, ZeroSearchEventMap, ZeroSearchEventName } from './types.js';
 import { Widget } from './ui/widget.js';
 
-export const VERSION = '0.0.0';
+/**
+ * Kept in step with `package.json` by `tests/unit/version.test.ts`.
+ *
+ * A literal rather than an import: pulling package.json into the bundle would
+ * inline the whole file, and the script tag build has a 30KB budget to keep.
+ */
+export const VERSION = '0.1.0-preview.1';
 
 /** The `<script>` tag opts in by carrying `data-zerosearch`. */
 const MARKER = 'data-zerosearch';
