@@ -12,7 +12,10 @@ import { fileURLToPath } from 'node:url';
 
 const OUT = dirname(fileURLToPath(import.meta.url));
 const ORIGIN = process.env.DEMO_ORIGIN ?? 'http://localhost:5173';
-const BASE = '/demo';
+// `/demo` under the dev server, where the repo itself is the server root. A
+// GitHub Pages project site serves from `/<repo>` instead, and every internal
+// link, the canonical URL and the sitemap's `<loc>` all have to agree with it.
+const BASE = process.env.DEMO_BASE ?? '/demo';
 // Dev serves TS straight from source; `DEMO_SCRIPT=/dist/web-ai.js` exercises the built bundle.
 const SCRIPT = process.env.DEMO_SCRIPT ?? '/src/index.ts';
 const SCRIPT_TYPE = SCRIPT.endsWith('.ts') ? ' type="module"' : '';
@@ -477,7 +480,7 @@ ${pages
 
 const robots = () => `User-agent: *
 Allow: /
-Disallow: /demo/private/
+Disallow: ${BASE}/private/
 Sitemap: ${ORIGIN}${BASE}/sitemap.xml
 `;
 

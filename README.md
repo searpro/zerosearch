@@ -512,11 +512,12 @@ to most visitors: generation needs WebGPU and a download the visitor has to acce
 has to work on the first visit and on every device. Extraction costs nothing, works everywhere, and
 cannot say anything the page does not.
 
-**The cost is real and is bounded four ways**, because there is no shared index and an uncapped
+**The cost is real and is bounded five ways**, because there is no shared index and an uncapped
 pass would multiply one page view into a full crawl:
 
 - `data-enrich-pages` caps it at 25 pages per visitor.
 - Every fetch waits for `requestIdleCallback` first.
+- A `navigator.locks` lease keyed on the origin means only one tab crawls, however many are open.
 - The pass stands aside entirely while a question is in flight.
 - `data-enrich="never"` turns it off.
 
@@ -579,8 +580,8 @@ Zero egress beyond model weights and the site's own pages. Specifically:
   copy of the page in the index.
 
 Politeness matters too, since every cold visitor is effectively a crawler hitting the origin:
-concurrency is capped at 2, requests are spaced 150ms apart, and each one waits for an idle moment
-first.
+concurrency is capped at 2, requests are spaced 150ms apart, each one waits for an idle moment
+first, and a cross-tab `navigator.locks` lease keeps four open tabs from sending four crawls.
 
 ---
 
@@ -778,9 +779,12 @@ output that is not a substring of the sources. Prose gets stiffer; faithfulness 
 rather than hoped for. (Phase 3 already applied that lever where it was cheapest — enrichment
 summaries are extractive for exactly this reason.)
 
-**No multi-tab crawl guard yet.** The plan calls for `navigator.locks.request()` so exactly one tab
-crawls while others read the shared IndexedDB. It is not implemented; two open tabs on a cold cache
-will both crawl.
+**The multi-tab guard covers crawling, not just-in-time fetches.** The manifest build and the
+background pass each run under a `navigator.locks` lease keyed on the origin, so four open tabs
+send one tab's worth of crawl traffic and the later tabs find the pages already in IndexedDB when
+their turn comes. Per-question fetches during `ask()` are deliberately *not* under that lock —
+making someone's question queue behind another tab's crawl would cost more than the duplicate
+request saves. Browsers without `navigator.locks` fall through to running unguarded.
 
 **English-first.** `all-MiniLM-L6-v2` is an English model. The embedder is behind a swappable
 interface and `data-model-base-url` exists, so a multilingual model can be configured in, but

@@ -1,0 +1,80 @@
+# Builds the library, generates the demo site against it, and publishes the
+# result to GitHub Pages.
+#
+# The demo is the only way to actually try this thing — an embeddable widget
+# cannot be evaluated from a README — so the deploy is gated on the same checks
+# that would stop a bad build reaching anyone: types, unit tests, and the
+# bundle-size budget the README quotes.
+name: Deploy demo to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. In-progress runs are cancelled rather than
+# queued: only the newest commit is worth publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Bundle size budget
+        run: npm run size
+
+      # Derived from the repository rather than hardcoded, so a rename or a
+      # fork publishes working links instead of ones pointing at this account.
+      - name: Generate the demo for Pages
+        env:
+          DEMO_ORIGIN: https://${{ github.repository_owner }}.github.io
+          DEMO_BASE: /${{ github.event.repository.name }}
+          DEMO_SCRIPT: /${{ github.event.repository.name }}/web-ai.js
+        run: node demo/build-demo.mjs
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp -r demo/. _site/
+          rm -f _site/build-demo.mjs
+          cp dist/web-ai.js dist/web-ai.worker.js _site/
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
