@@ -5,6 +5,7 @@ import {
   EVENT,
   WORKER,
   type AskResult,
+  type BackfillResult,
   type BuildManifestResult,
   type GenerationStatus,
   type TokenEvent,
@@ -12,7 +13,9 @@ import {
   type InitResult,
   type RevalidateResult,
   type StatsResult,
+  type TopicsResult,
 } from './protocol.js';
+import { canonicalUrl } from '../knowledge/urls.js';
 import { RpcPeer, type Transport } from './rpc.js';
 
 /**
@@ -65,6 +68,7 @@ export class Orchestrator {
   async #start(): Promise<InitResult> {
     const { config, events } = this.#options;
     const origin = new URL(config.sitemapUrl).origin;
+    const currentUrl = this.#currentUrl();
 
     const worker = (this.#options.createWorker ?? defaultWorker)(this.#options.workerUrl);
     this.#worker = worker;
@@ -77,7 +81,7 @@ export class Orchestrator {
       origin,
       sitemapUrl: config.sitemapUrl,
       maxPages: config.maxPages,
-      currentUrl: location.href,
+      currentUrl,
     });
     this.#host.register(peer);
 
@@ -85,11 +89,24 @@ export class Orchestrator {
     peer.on(EVENT.modelProgress, (p: { name: string; loaded: number; total: number }) =>
       events.emit('model:progress', p),
     );
-    peer.on(EVENT.indexStart, (p: { urls: number }) =>
-      events.emit('index:start', { source: 'crawl', urls: p.urls }),
+    peer.on(EVENT.indexStart, (p: { urls: number; source?: 'crawl' | 'backfill' }) =>
+      events.emit('index:start', { source: p.source ?? 'crawl', urls: p.urls }),
     );
     peer.on(EVENT.indexProgress, (p: IndexProgress) =>
       events.emit('index:progress', { done: p.done, total: p.total, url: p.url }),
+    );
+    peer.on(EVENT.enrichProgress, (p: IndexProgress) =>
+      events.emit('enrich:progress', { done: p.done, total: p.total, url: p.url }),
+    );
+    peer.on(EVENT.enrichDone, (p: BackfillResult & { pages: number }) =>
+      events.emit('enrich:done', {
+        indexed: p.indexed,
+        skipped: p.skipped,
+        remaining: p.remaining,
+        completed: p.completed,
+        cancelled: p.cancelled,
+        pages: p.pages,
+      }),
     );
     // Streamed tokens are routed to whichever `ask` is waiting on them, by id.
     peer.on(EVENT.token, (p: TokenEvent) => {
@@ -100,7 +117,7 @@ export class Orchestrator {
 
     const result = await peer.call<InitResult>(WORKER.init, {
       origin,
-      currentUrl: location.href,
+      currentUrl,
       sitemapUrl: config.sitemapUrl,
       maxTier: config.maxTier,
       modelBaseUrl: config.modelBaseUrl,
@@ -158,7 +175,7 @@ export class Orchestrator {
     try {
       return await this.#call<AskResult>(WORKER.ask, {
         query,
-        currentUrl: location.href,
+        currentUrl: this.#currentUrl(),
         maxFetch,
         requestId,
       });
@@ -167,6 +184,34 @@ export class Orchestrator {
       // and route a later question's tokens into a dead turn.
       this.#streams.delete(requestId);
     }
+  }
+
+  /**
+   * Read the rest of the site in the background.
+   *
+   * Under the same cross-tab lock as the manifest build, and for the same
+   * reason: every open tab is its own crawler, so without it a visitor with
+   * four tabs open sends four times the traffic to reach the same index. The
+   * later tabs are not idle while they wait — they simply find the pages
+   * already in IndexedDB when their turn comes.
+   */
+  async enrich(options: { budget?: number } = {}): Promise<BackfillResult> {
+    await this.prepare();
+    return await withLock(`web-ai:backfill:${location.origin}`, () =>
+      this.#call<BackfillResult>(WORKER.backfill, options),
+    );
+  }
+
+  /** Stop the running pass. What it has already read is kept. */
+  async cancelEnrichment(): Promise<void> {
+    if (!this.#peer) return;
+    await this.#call(WORKER.cancelBackfill);
+  }
+
+  /** The category tree and things worth asking. Cheap — no fetching, no model. */
+  async topics(limit?: number): Promise<TopicsResult> {
+    await this.prepare();
+    return await this.#call<TopicsResult>(WORKER.topics, { limit });
   }
 
   /** Load the generative model. This is the ~300MB download. */
@@ -203,6 +248,20 @@ export class Orchestrator {
     this.#preparing = null;
     this.#init = null;
     this.#streams.clear();
+  }
+
+  /**
+   * Which URL this page counts as.
+   *
+   * Read fresh each time rather than cached at boot: a single-page app can
+   * navigate without reloading us, and answering about the page the visitor was
+   * on ten minutes ago is worse than not answering.
+   */
+  #currentUrl(): string {
+    const declared = document
+      .querySelector<HTMLLinkElement>('link[rel="canonical"]')
+      ?.getAttribute('href');
+    return canonicalUrl(location.href, declared);
   }
 
   /**

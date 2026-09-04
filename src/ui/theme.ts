@@ -196,6 +196,36 @@ ${config.theme === 'auto' ? '} }' : ''}
   .turn-streaming .answer-text::after { animation: none; }
 }
 
+.intro[hidden] { display: none; }
+.topics { padding: 0 4px 8px; }
+.topics-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wa-muted);
+  text-align: center;
+}
+.topic-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.topic-chip {
+  padding: 6px 11px;
+  border: 1px solid var(--wa-border);
+  border-radius: 999px;
+  background: var(--wa-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  /* Headings can be long; a chip that grew to fit one would break the row. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topic-chip:hover { border-color: var(--wa-accent); color: var(--wa-accent); }
+.topic-chip:focus-visible { outline: 2px solid var(--wa-accent); outline-offset: 2px; }
+
 .offer-slot:empty { display: none; }
 .offer {
   display: flex;

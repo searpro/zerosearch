@@ -1,7 +1,15 @@
-import type { AskResult, GenerationStatus } from '../engine/protocol.js';
+import type { AskResult, GenerationStatus, TopicsResult } from '../engine/protocol.js';
 import type { Emitter } from '../engine/events.js';
 import type { WebAIConfig } from '../types.js';
-import { answerTurn, errorTurn, generationOffer, pendingTurn, streamingTurn, userTurn } from './render.js';
+import {
+  answerTurn,
+  errorTurn,
+  generationOffer,
+  pendingTurn,
+  streamingTurn,
+  topicsIntro,
+  userTurn,
+} from './render.js';
 import { styles } from './theme.js';
 
 const HOST_TAG = 'web-ai-root';
@@ -29,6 +37,7 @@ export class Widget {
   #send!: HTMLButtonElement;
 
   #offerSlot!: HTMLElement;
+  #intro!: HTMLElement;
   #open = false;
   #busy = false;
   #lastFocused: Element | null = null;
@@ -103,6 +112,10 @@ export class Widget {
     const trimmed = query.trim();
     if (trimmed.length === 0 || this.#busy) return;
 
+    // The opening suggestions have done their job once a question exists, and
+    // leaving them above the transcript pushes the answer off the panel.
+    this.#intro.hidden = true;
+
     this.#setBusy(true);
     this.#append(userTurn(trimmed));
     let turn = this.#append(pendingTurn());
@@ -134,6 +147,22 @@ export class Widget {
       this.#scroll();
       this.#input.focus();
     }
+  }
+
+  /**
+   * Fill the empty panel with what this site can be asked about.
+   *
+   * Called once the manifest exists and again as the background pass reads
+   * pages, because suggestions drawn from real headings are better than ones
+   * drawn from URL slugs. Ignored once the visitor has asked something — their
+   * own question is a better use of the space than our guesses at one.
+   */
+  showTopics(topics: TopicsResult): void {
+    if (this.#intro.hidden) return;
+
+    const intro = topicsIntro(topics, (query) => void this.submit(query));
+    this.#intro.querySelector('.topics')?.remove();
+    if (intro) this.#intro.append(intro);
   }
 
   /**
@@ -234,10 +263,14 @@ export class Widget {
     // Answers arrive asynchronously, so a screen reader needs to be told.
     this.#transcript.setAttribute('aria-live', 'polite');
 
+    this.#intro = document.createElement('div');
+    this.#intro.className = 'intro';
+
     const hint = document.createElement('p');
     hint.className = 'placeholder';
     hint.textContent = 'Ask a question and I will answer from this site’s own pages.';
-    this.#transcript.append(hint);
+    this.#intro.append(hint);
+    this.#transcript.append(this.#intro);
 
     body.append(this.#transcript);
     return body;

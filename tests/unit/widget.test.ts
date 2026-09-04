@@ -125,3 +125,69 @@ describe('Widget', () => {
     expect(document.body.contains(widget.element)).toBe(false);
   });
 });
+
+describe('Widget: what can I ask?', () => {
+  const topics = (overrides = {}) => ({
+    tree: { path: '', label: 'Site', pages: [], children: [] },
+    suggestions: [
+      { text: 'Can I migrate from Prometheus?', url: 'https://x.example/faq', category: 'Site' },
+      { text: 'Pricing', url: 'https://x.example/pricing', category: 'Site' },
+    ],
+    enriched: 2,
+    total: 12,
+    ...overrides,
+  });
+
+  it('offers the site’s own questions in the empty panel', () => {
+    const { widget, root } = make();
+    widget.showTopics(topics());
+
+    const chips = [...root.querySelectorAll('.topic-chip')].map((c) => c.textContent);
+    expect(chips).toEqual(['Can I migrate from Prometheus?', 'Pricing']);
+  });
+
+  it('asks the question when one is clicked', async () => {
+    const { widget, root } = make();
+    const asked: string[] = [];
+    widget.onAsk = async (query) => {
+      asked.push(query);
+      throw new Error('stop here — the question reaching the engine is the point');
+    };
+
+    widget.showTopics(topics());
+    root.querySelector<HTMLButtonElement>('.topic-chip')!.click();
+    await Promise.resolve();
+
+    expect(asked).toEqual(['Can I migrate from Prometheus?']);
+  });
+
+  it('replaces earlier suggestions rather than stacking them', () => {
+    const { widget, root } = make();
+    widget.showTopics(topics());
+    widget.showTopics(topics({ suggestions: [{ text: 'Rate limits', url: 'u', category: 'Docs' }] }));
+
+    expect(root.querySelectorAll('.topics')).toHaveLength(1);
+    expect(root.querySelectorAll('.topic-chip')).toHaveLength(1);
+  });
+
+  it('gets out of the way once a question has been asked', async () => {
+    const { widget, root } = make();
+    widget.onAsk = async () => {
+      throw new Error('no engine here');
+    };
+
+    await widget.submit('how much does it cost');
+    expect(root.querySelector<HTMLElement>('.intro')!.hidden).toBe(true);
+
+    // A late-arriving refresh from the background pass must not push the
+    // transcript down to show suggestions nobody needs any more.
+    widget.showTopics(topics());
+    expect(root.querySelector('.topic-chip')).toBeNull();
+  });
+
+  it('shows nothing at all when the site yields no suggestions', () => {
+    const { widget, root } = make();
+    widget.showTopics(topics({ suggestions: [] }));
+    expect(root.querySelector('.topics')).toBeNull();
+  });
+});

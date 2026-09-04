@@ -1,5 +1,5 @@
 import { splitCitations } from '../chat/answer.js';
-import type { AskResult, Citation, GenerationStatus, Suggestion } from '../engine/protocol.js';
+import type { AskResult, Citation, GenerationStatus, Suggestion, TopicsResult } from '../engine/protocol.js';
 
 /**
  * Turn rendering.
@@ -222,4 +222,50 @@ export function generationOffer(
 function formatBytes(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+/**
+ * "What can I ask?" — the opening state of an empty panel.
+ *
+ * A chat box on an unfamiliar site is a blank prompt with no clue what is
+ * behind it, and a visitor who guesses wrong reads "I couldn't find that" and
+ * concludes the assistant is useless rather than that they asked the wrong
+ * question. Showing the site's own sections and its own questions makes the
+ * first attempt likely to land.
+ *
+ * Every string here comes from the site: category names from its URL structure,
+ * questions from its headings. Nothing is generated, so nothing here can offer
+ * a question the site cannot answer.
+ */
+export function topicsIntro(
+  topics: TopicsResult,
+  onAsk: (query: string) => void,
+): HTMLElement | null {
+  if (topics.suggestions.length === 0) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'topics';
+
+  const label = document.createElement('p');
+  label.className = 'topics-label';
+  label.textContent = 'You could ask about';
+  wrap.append(label);
+
+  const list = document.createElement('div');
+  list.className = 'topic-chips';
+
+  for (const suggestion of topics.suggestions) {
+    const chip = document.createElement('button');
+    chip.className = 'topic-chip';
+    chip.type = 'button';
+    chip.textContent = suggestion.text;
+    // The category is context, not part of the question — a screen reader
+    // reading six bare titles in a row has no idea what they belong to.
+    chip.setAttribute('aria-label', `Ask about ${suggestion.text}, in ${suggestion.category}`);
+    chip.addEventListener('click', () => onAsk(suggestion.text));
+    list.append(chip);
+  }
+
+  wrap.append(list);
+  return wrap;
 }

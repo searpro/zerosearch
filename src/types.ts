@@ -26,6 +26,18 @@ export type Theme = 'auto' | 'light' | 'dark';
  */
 export type Generate = 'ask' | 'auto' | 'never';
 
+/**
+ * Whether to read the site ahead of being asked.
+ *
+ * `idle` is the default because it is what makes the assistant able to answer
+ * about pages nobody has visited: routing knows only a URL slug until a page is
+ * fetched, so `about.html` is unreachable for a question about the team. The
+ * cost is real and falls on the site owner's origin — every cold visitor
+ * crawls for themselves — so it is capped, idle-scheduled, and one attribute
+ * away from off.
+ */
+export type Enrich = 'idle' | 'never';
+
 export interface WebAIConfig {
   /** Where the site's URL manifest lives. Resolved against the document base URL. */
   sitemapUrl: string;
@@ -40,6 +52,10 @@ export interface WebAIConfig {
   libraryUrl: string | null;
   /** Whether written answers are offered, loaded immediately, or disabled. */
   generate: Generate;
+  /** Whether a bounded background pass reads the rest of the site. */
+  enrich: Enrich;
+  /** Cap on pages that background pass may fetch per visitor. */
+  enrichPages: number;
   /** A prebuilt static index to try before crawling anything. */
   indexUrl: string | null;
   /** Cap on how many sitemap URLs enter the routing manifest. */
@@ -62,9 +78,20 @@ export interface WebAIConfig {
 export type WebAIEventMap = {
   'ready': { tier: Tier };
   'tier': { tier: Tier; reason: string; capped: boolean };
-  'index:start': { source: 'prebuilt' | 'crawl'; urls: number };
+  'index:start': { source: 'prebuilt' | 'crawl' | 'backfill'; urls: number };
   'index:progress': { done: number; total: number; url?: string };
   'index:done': { pages: number; chunks: number; fromCache: boolean };
+  /** The background pass reading ahead. Distinct from indexing to answer a question. */
+  'enrich:progress': { done: number; total: number; url?: string };
+  'enrich:done': {
+    indexed: number;
+    skipped: number;
+    remaining: number;
+    completed: boolean;
+    cancelled: boolean;
+    /** Total pages in the index now, not just the ones this pass added. */
+    pages: number;
+  };
   'model:progress': { name: string; loaded: number; total: number };
   'generation:ready': { modelLabel: string };
   'answer:token': { requestId: string; text: string };

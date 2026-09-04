@@ -1,6 +1,8 @@
 import type {
   AskParams,
   AskResult,
+  BackfillParams,
+  BackfillResult,
   BuildManifestResult,
   Citation,
   HostFetchParams,
@@ -13,9 +15,13 @@ import type {
   RevalidateResult,
   StatsResult,
   Suggestion,
+  TopicsResult,
 } from '../engine/protocol.js';
 import { EVENT } from '../engine/protocol.js';
 import { CHUNKER_VERSION, chunkPage } from '../knowledge/chunk.js';
+import { type CategoryInput, buildCategoryTree, suggestQuestions } from '../knowledge/categories.js';
+import { ENRICHMENT_VERSION, questionHeadings, summarizePage } from '../knowledge/enrich.js';
+import { describeUrl } from '../knowledge/urls.js';
 import { HybridIndex } from '../knowledge/hybrid.js';
 import { KnowledgeStore, type StoredManifestEntry, type StoredPage, buildCacheKey } from '../knowledge/store.js';
 import type { Chunk, ExtractedPage } from '../knowledge/types.js';
@@ -50,6 +56,17 @@ export const EXTRACTOR_VERSION = 1;
  * grounded assistant starts inventing things.
  */
 export const RELEVANCE_FLOOR = 0.28;
+
+/**
+ * How many pages one visitor's background pass may read.
+ *
+ * The third constraint in the plan is that there is no shared index: every cold
+ * visitor pays the build cost themselves, so an uncapped backfill turns one
+ * page view into a full crawl and N concurrent visitors into N crawls. Twenty
+ * five covers a small site outright and bounds a large one to something a
+ * static host will not notice.
+ */
+export const DEFAULT_BACKFILL_BUDGET = 25;
 
 /**
  * Lexical score is deliberately NOT a grounding signal.
@@ -97,6 +114,14 @@ export class Engine {
   #currentPageIndexed = false;
   #generator: Generator | null = null;
 
+  /** URLs the backfill tried and could not use. Mirrored into `meta`. */
+  #skipped = new Set<string>();
+  #backfillRunning: Promise<BackfillResult> | null = null;
+  #backfillCancelled = false;
+  /** Questions in flight. The backfill stands aside while any are. */
+  #asks = 0;
+  #asksDrained: (() => void)[] = [];
+
   private constructor(
     params: InitParams,
     deps: EngineDeps,
@@ -135,6 +160,7 @@ export class Engine {
       embedderId: embedder.id,
       chunkerVersion: CHUNKER_VERSION,
       extractorVersion: EXTRACTOR_VERSION,
+      enrichmentVersion: ENRICHMENT_VERSION,
       siteVersion: params.siteVersion,
     });
 
@@ -162,12 +188,15 @@ export class Engine {
 
   /** Rebuild the in-memory indexes from whatever survived in IndexedDB. */
   async #hydrate(): Promise<void> {
-    const [pages, chunks, vectors, manifest] = await Promise.all([
+    const [pages, chunks, vectors, manifest, meta] = await Promise.all([
       this.#store.getAllPages(),
       this.#store.getAllChunks(),
       this.#store.getAllVectors(),
       this.#store.getManifest(),
+      this.#store.getMeta(),
     ]);
+
+    this.#skipped = new Set(meta.backfill.skipped);
 
     for (const page of pages) this.#pages.set(page.url, page);
 
@@ -245,7 +274,24 @@ export class Engine {
    * are worth pulling in, and retrieval runs again. Fetching is capped so one
    * question cannot turn into a crawl of the whole site.
    */
-  async ask({ query, currentUrl, maxFetch = 3, requestId }: AskParams): Promise<AskResult> {
+  async ask(params: AskParams): Promise<AskResult> {
+    // A question is the only thing here a person is actually waiting on, so the
+    // background pass stands aside for its duration rather than making the
+    // visitor queue behind a page they did not ask for.
+    this.#asks += 1;
+    try {
+      return await this.#answer(params);
+    } finally {
+      this.#asks -= 1;
+      if (this.#asks === 0) {
+        const waiting = this.#asksDrained;
+        this.#asksDrained = [];
+        for (const resolve of waiting) resolve();
+      }
+    }
+  }
+
+  async #answer({ query, currentUrl, maxFetch = 3, requestId }: AskParams): Promise<AskResult> {
     const started = Date.now();
     const fetched: string[] = [];
 
@@ -330,6 +376,152 @@ export class Engine {
       tookMs: Date.now() - started,
       ...written,
     };
+  }
+
+  /**
+   * Read the rest of the site in the background.
+   *
+   * Phase 1 left a hole it named: routing works from URL slugs until a page has
+   * been fetched, so `faq.html` and `about.html` are unreachable for questions
+   * about migration or headcount, because their slugs say neither. Retrieval
+   * was never the weak part — it scores 0.43-0.80 on the right passage — the
+   * page simply never got fetched. This closes that by reading pages ahead of
+   * being asked, and enriching their routing entries as it goes.
+   *
+   * Three properties make it safe to leave on:
+   *
+   * - **Bounded.** `budget` caps the pages one visitor may fetch. There is no
+   *   shared index, so every cold visitor crawls for themselves.
+   * - **Resumable.** Each page is committed as it is read, so a visitor who
+   *   closes the tab halfway keeps everything up to that point, and the next
+   *   visit continues from what is missing rather than starting over.
+   * - **Deferrable.** Every fetch is idle-scheduled on the main thread, and the
+   *   loop stands aside entirely while a question is in flight.
+   */
+  async backfill(params: BackfillParams = {}): Promise<BackfillResult> {
+    // Concurrent callers join the running pass. Two passes would race on the
+    // same pages and double the traffic to learn the same thing.
+    this.#backfillRunning ??= this.#backfill(params).finally(() => {
+      this.#backfillRunning = null;
+    });
+    return await this.#backfillRunning;
+  }
+
+  /** Stop the running pass after the page in flight. Progress so far is kept. */
+  cancelBackfill(): void {
+    this.#backfillCancelled = true;
+  }
+
+  async #backfill({ budget = DEFAULT_BACKFILL_BUDGET }: BackfillParams): Promise<BackfillResult> {
+    const started = Date.now();
+    this.#backfillCancelled = false;
+
+    const pending = this.#pendingPages();
+    const total = this.#manifest.size;
+
+    if (pending.length === 0) {
+      await this.#markBackfill({ completedAt: Date.now() });
+      return { indexed: 0, skipped: 0, remaining: 0, completed: true, cancelled: false, tookMs: 0 };
+    }
+
+    await this.#markBackfill({ startedAt: Date.now(), completedAt: null });
+    this.#deps.notify(EVENT.indexStart, { source: 'backfill', urls: Math.min(pending.length, budget) });
+
+    let indexed = 0;
+    let skipped = 0;
+    let cancelled = false;
+
+    for (const entry of pending) {
+      if (indexed >= budget) break;
+      if (this.#backfillCancelled) {
+        cancelled = true;
+        break;
+      }
+      // Let anything the visitor is actually waiting for finish first.
+      await this.#whenNoAsks();
+
+      if (await this.#indexPage(entry.url, 'background')) {
+        indexed += 1;
+      } else {
+        // Gone, empty, or refused. Recorded so the next visit does not spend
+        // its budget rediscovering the same dead URLs.
+        skipped += 1;
+        this.#skipped.add(entry.url);
+        await this.#markBackfill({ skipped: [...this.#skipped] });
+      }
+
+      this.#deps.notify(EVENT.enrichProgress, {
+        done: indexed + skipped,
+        total: Math.min(pending.length, budget),
+        url: entry.url,
+        phase: 'backfill',
+      } satisfies IndexProgress);
+    }
+
+    const remaining = this.#pendingPages().length;
+    const completed = remaining === 0;
+    if (completed) await this.#markBackfill({ completedAt: Date.now() });
+
+    const result = { indexed, skipped, remaining, completed, cancelled, tookMs: Date.now() - started };
+    this.#deps.notify(EVENT.enrichDone, { ...result, pages: this.#pages.size, total });
+    return result;
+  }
+
+  /**
+   * What a visitor could ask about, for a widget that would otherwise show them
+   * an empty box on a site they have never used.
+   *
+   * Available immediately: the tree comes from URL structure, which the sitemap
+   * already gave us, so this works before anything has been fetched and on a
+   * retrieval-only device. It sharpens as the backfill runs — real titles
+   * replace slug guesses, and pages that pose questions contribute them
+   * verbatim.
+   */
+  topics(limit = 6): TopicsResult {
+    const inputs = this.#categoryInputs();
+    const tree = buildCategoryTree(inputs);
+
+    return {
+      tree,
+      suggestions: suggestQuestions(inputs, tree, limit),
+      enriched: [...this.#manifest.values()].filter((entry) => entry.enrichedAt !== undefined).length,
+      total: inputs.length,
+    };
+  }
+
+  /** Manifest entries not yet read, most valuable to read first. */
+  #pendingPages(): StoredManifestEntry[] {
+    return [...this.#manifest.values()]
+      .filter((entry) => !this.#pages.has(entry.url) && !this.#skipped.has(entry.url))
+      .sort(byRoutingNeed);
+  }
+
+  #categoryInputs(): CategoryInput[] {
+    const inputs = new Map<string, CategoryInput>();
+
+    for (const entry of this.#manifest.values()) {
+      inputs.set(entry.url, {
+        url: entry.url,
+        slugTitle: entry.slugTitle,
+        segments: entry.segments,
+        category: entry.category ?? null,
+        questions: entry.questions,
+        priority: entry.priority,
+      });
+    }
+    return [...inputs.values()];
+  }
+
+  async #markBackfill(patch: Partial<{ skipped: string[]; startedAt: number | null; completedAt: number | null }>): Promise<void> {
+    const meta = await this.#store.getMeta();
+    await this.#store.setMeta({ backfill: { ...meta.backfill, ...patch } });
+  }
+
+  /** Resolves once no question is in flight. */
+  async #whenNoAsks(): Promise<void> {
+    while (this.#asks > 0) {
+      await new Promise<void>((resolve) => this.#asksDrained.push(resolve));
+    }
   }
 
   /**
@@ -435,12 +627,13 @@ export class Engine {
   }
 
   /** Fetch, extract, chunk, embed and store one page. Returns false if skipped. */
-  async #indexPage(url: string): Promise<boolean> {
+  async #indexPage(url: string, priority: 'interactive' | 'background' = 'interactive'): Promise<boolean> {
     const existing = this.#pages.get(url);
     const result = await this.#deps.fetchPage({
       url,
       etag: existing?.etag,
       lastModified: existing?.lastModified,
+      priority,
     });
 
     if (result.kind !== 'page') return false;
@@ -480,25 +673,53 @@ export class Engine {
       this.#chunkIndex.add(chunk.id, chunk.text, vectors[i]!);
     });
 
-    await this.#improveRouting(page);
+    await this.#enrichEntry(page);
   }
 
   /**
-   * Upgrade a manifest entry from its URL slug to the page's real title and
-   * description, now that we have actually seen it. Free, and it makes routing
-   * better for every later question.
+   * Replace a manifest entry's guesses with what the page actually says.
+   *
+   * This is the whole of progressive enrichment, and it is where the Phase 1
+   * limitation goes away. Before a page is fetched, routing sees `about` — one
+   * generic word — and a question about headcount has nothing to match. After,
+   * it sees the real title, the description, and the page's own headings and
+   * lead sentences, which is a description of the page written by the people
+   * who wrote the page.
+   *
+   * Nothing here is generated. See `enrich.ts` for why a summary from the 360M
+   * model is not an improvement on this.
    */
-  async #improveRouting(page: ExtractedPage): Promise<void> {
+  async #enrichEntry(page: ExtractedPage): Promise<void> {
     const entry = this.#manifest.get(page.url);
-    if (!entry) return;
+    // A page can be indexed without being in the manifest — the current page on
+    // a site with no sitemap. It is still worth routing to, so give it an entry.
+    // Its path still says where it belongs, and leaving `segments` empty would
+    // put it at the root of the category tree and drag every sibling there with
+    // it, by shortening the prefix they all share.
+    const base: StoredManifestEntry = entry ?? {
+      url: page.url,
+      ...describeUrl(page.url),
+      lastmod: null,
+      priority: null,
+    };
 
-    const upgraded: StoredManifestEntry = { ...entry, slugTitle: page.title };
-    const text = [page.title, page.description ?? '', entry.segments.join(' ')].join(' ').trim();
-    upgraded.vector = await this.#embedder.embedOne(text);
+    const summary = summarizePage(page);
+    const enriched: StoredManifestEntry = {
+      ...base,
+      slugTitle: page.title,
+      description: page.description,
+      summary,
+      questions: questionHeadings(page.blocks),
+      category: page.category,
+      enrichedAt: Date.now(),
+    };
 
-    this.#manifest.set(page.url, upgraded);
-    this.#routeIndex.add(page.url, text, upgraded.vector);
-    await this.#store.putManifest([...this.#manifest.values()]);
+    const text = routeText(enriched);
+    enriched.vector = await this.#embedder.embedOne(text);
+
+    this.#manifest.set(page.url, enriched);
+    this.#routeIndex.add(page.url, text, enriched.vector);
+    await this.#store.putManifestEntry(enriched);
   }
 
   /**
@@ -606,7 +827,42 @@ function isGrounded(match: { dense: number }): boolean {
   return match.dense >= RELEVANCE_FLOOR;
 }
 
-/** What the routing index searches over before a page has ever been fetched. */
-function routeText(entry: StoredManifestEntry | { slugTitle: string; segments: string[] }): string {
-  return [entry.slugTitle, ...entry.segments].join(' ').trim();
+/**
+ * Which unread page is worth reading first.
+ *
+ * The pass exists to reach pages routing cannot, and a page routing cannot
+ * reach is precisely one whose slug carries almost no words — `about`, `faq`,
+ * `index`. So the fewer words an entry currently offers, the sooner it is read.
+ * Sitemap priority breaks ties, being the site owner's own statement of what
+ * matters. This only decides what a visitor who leaves early ends up with; a
+ * pass that runs to completion reads the same set either way.
+ */
+function byRoutingNeed(a: StoredManifestEntry, b: StoredManifestEntry): number {
+  const words = (entry: StoredManifestEntry): number =>
+    new Set(routeText(entry).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)).size;
+
+  return words(a) - words(b) || (b.priority ?? 0) - (a.priority ?? 0);
+}
+
+/**
+ * What the routing index searches over.
+ *
+ * Before a page is fetched this is its slug and path — a few words, often
+ * generic. After enrichment it is the page's real title, the description its
+ * author wrote, and a summary drawn from its own headings and opening prose.
+ *
+ * Ordered most-curated first because the embedder truncates at 256 word-piece
+ * tokens: whatever falls off the end is the part nobody chose deliberately.
+ */
+function routeText(entry: {
+  slugTitle: string;
+  segments: string[];
+  description?: string | null;
+  summary?: string;
+  category?: string | null;
+}): string {
+  return [entry.slugTitle, entry.description ?? '', entry.summary ?? '', entry.category ?? '', ...entry.segments]
+    .filter((part) => part.length > 0)
+    .join(' ')
+    .trim();
 }

@@ -1,4 +1,5 @@
 import type { Tier } from '../types.js';
+import type { CategoryNode, SuggestedQuestion } from '../knowledge/categories.js';
 import type { ExtractedPage, ManifestEntry } from '../knowledge/types.js';
 
 /**
@@ -14,6 +15,9 @@ export const WORKER = {
   init: 'worker:init',
   ensureManifest: 'worker:ensureManifest',
   ask: 'worker:ask',
+  backfill: 'worker:backfill',
+  cancelBackfill: 'worker:cancelBackfill',
+  topics: 'worker:topics',
   enableGeneration: 'worker:enableGeneration',
   generationStatus: 'worker:generationStatus',
   revalidate: 'worker:revalidate',
@@ -33,6 +37,8 @@ export const EVENT = {
   indexStart: 'evt:indexStart',
   indexProgress: 'evt:indexProgress',
   indexDone: 'evt:indexDone',
+  enrichProgress: 'evt:enrichProgress',
+  enrichDone: 'evt:enrichDone',
   error: 'evt:error',
 } as const;
 
@@ -135,6 +141,38 @@ export interface AskResult {
   cited: number[];
 }
 
+export interface BackfillParams {
+  /**
+   * How many pages this pass may fetch.
+   *
+   * A budget, not a target. Every cold visitor runs their own crawl — there is
+   * no shared index — so an uncapped backfill on a large site would multiply
+   * one page view into hundreds of requests against the origin.
+   */
+  budget?: number;
+}
+
+export interface BackfillResult {
+  /** Pages fetched, chunked and embedded during this pass. */
+  indexed: number;
+  /** Pages tried and found unusable. Recorded so a later pass does not retry them. */
+  skipped: number;
+  /** Manifest entries still unread when the pass stopped. */
+  remaining: number;
+  /** True when the pass ran out of manifest rather than out of budget. */
+  completed: boolean;
+  cancelled: boolean;
+  tookMs: number;
+}
+
+export interface TopicsResult {
+  tree: CategoryNode;
+  suggestions: SuggestedQuestion[];
+  /** Pages read so far, against the size of the manifest. */
+  enriched: number;
+  total: number;
+}
+
 export interface RevalidateResult {
   checked: number;
   changed: number;
@@ -153,6 +191,13 @@ export interface HostFetchParams {
   url: string;
   etag?: string | null;
   lastModified?: string | null;
+  /**
+   * `background` fetches wait for the browser to be idle first.
+   *
+   * The visitor came for the host page, not for us. A question they just typed
+   * is worth interrupting for; reading ahead is not.
+   */
+  priority?: 'interactive' | 'background';
 }
 
 export type HostFetchResult =
@@ -170,5 +215,5 @@ export interface IndexProgress {
   done: number;
   total: number;
   url?: string;
-  phase: 'manifest' | 'pages';
+  phase: 'manifest' | 'pages' | 'backfill';
 }

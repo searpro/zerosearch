@@ -1,6 +1,7 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { extractFromHtml } from '../../src/dom/extract.js';
+import { EVENT } from '../../src/engine/protocol.js';
 import type { HostFetchParams, HostFetchResult, InitParams } from '../../src/engine/protocol.js';
 import { KnowledgeStore } from '../../src/knowledge/store.js';
 import { l2Normalize } from '../../src/knowledge/vector.js';
@@ -417,3 +418,302 @@ describe('Engine: revalidation', () => {
     expect(engine.stats().pages).toBe(0);
   });
 });
+
+/**
+ * Background enrichment.
+ *
+ * The site here is built so routing cannot reach two of its pages from their
+ * URLs alone: `handbook` and `notes` are not words any question uses, and the
+ * fake embedder has no notion of relatedness to bridge that. Only reading them
+ * puts their real titles and headings into the routing index — which is the
+ * whole claim Phase 3 has to make good on.
+ */
+const HIDDEN_ORIGIN = 'https://meridian.example';
+
+const HIDDEN_PAGES: Record<string, string> = {
+  '/handbook.html': `<title>Rate limits</title>
+    <meta name="description" content="Rate limits and requests per minute on every plan.">
+    <main><h2>Rate limits</h2>
+    <p>Every plan has rate limits measured in requests per minute.</p></main>`,
+  '/notes.html': `<title>Rotate tokens</title><main><h2>Rotate tokens</h2>
+    <p>Rotate tokens through the authentication endpoint whenever they leak.</p></main>`,
+  '/pricing.html': `<title>Pricing</title><main><h2>Team</h2>
+    <p>The team plan cost is 49 dollars per month.</p></main>`,
+  '/missing.html': '',
+};
+
+function hiddenDeps(overrides: Record<string, unknown> = {}) {
+  const requests: { url: string; priority?: string }[] = [];
+  const notices: { type: string; payload: unknown }[] = [];
+
+  return {
+    requests,
+    notices,
+    deps: {
+      fetchPage: async ({ url, priority }: HostFetchParams): Promise<HostFetchResult> => {
+        requests.push({ url: new URL(url).pathname, priority });
+        const html = HIDDEN_PAGES[new URL(url).pathname];
+        if (html === undefined) return { kind: 'gone' };
+        // An empty body is indistinguishable from a page we cannot use.
+        return { kind: 'page', page: extractFromHtml(html, url) };
+      },
+      manifest: async () => ({
+        source: 'sitemap' as const,
+        entries: Object.keys(HIDDEN_PAGES).map((path) => ({
+          url: `${HIDDEN_ORIGIN}${path}`,
+          slugTitle: path.replace(/[/.]/g, ' ').replace('html', '').trim(),
+          segments: [],
+          lastmod: null,
+          priority: null,
+        })),
+      }),
+      notify: (type: string, payload: unknown) => notices.push({ type, payload }),
+      loadEmbedder: () => Embedder.load({ createPipeline: async () => fakeEmbedPipeline }),
+      openStore: (key: string) => KnowledgeStore.open(key, factory as unknown as IDBFactory),
+      probe: async (): Promise<Capabilities> => ({
+        webgpu: false,
+        maxBufferSize: null,
+        maxStorageBufferBindingSize: null,
+        deviceMemoryGb: null,
+        saveData: false,
+        effectiveType: null,
+        cores: 4,
+      }),
+      ...overrides,
+    },
+  };
+}
+
+async function bootHidden(overrides: Record<string, unknown> = {}) {
+  const harness = hiddenDeps(overrides);
+  const { engine } = await Engine.init(
+    { ...PARAMS, origin: HIDDEN_ORIGIN, currentUrl: `${HIDDEN_ORIGIN}/pricing.html` },
+    harness.deps,
+  );
+  await engine.ensureManifest();
+  return { engine, ...harness };
+}
+
+describe('Engine: background enrichment', () => {
+  it('reaches a page whose slug says nothing about its content', async () => {
+    const { engine } = await bootHidden();
+    const query = 'rate limits requests per minute';
+    const nowhere = `${HIDDEN_ORIGIN}/nowhere.html`;
+
+    // Without reading ahead, the answer is out of reach: nothing indexed
+    // contains it, and `handbook` shares no word with the question for routing
+    // to follow. This is the Phase 1 limitation, reproduced.
+    const before = await engine.ask({ query, currentUrl: nowhere, maxFetch: 0 });
+    expect(before.grounded).toBe(false);
+
+    await engine.backfill({ budget: 10 });
+
+    const after = await engine.ask({ query, currentUrl: nowhere, maxFetch: 0 });
+    expect(after.grounded).toBe(true);
+    expect(after.citations[0]?.url).toContain('/handbook.html');
+    // And it costs nothing at the moment of asking: the page was already read.
+    expect(after.fetched).toEqual([]);
+  });
+
+  it('spends no more than its budget', async () => {
+    const { engine, requests } = await bootHidden();
+    const result = await engine.backfill({ budget: 2 });
+
+    expect(result.indexed).toBe(2);
+    expect(result.completed).toBe(false);
+    expect(result.remaining).toBeGreaterThan(0);
+    expect(requests.filter((r) => r.priority === 'background')).toHaveLength(2);
+  });
+
+  it('marks its fetches as background so the host can defer them', async () => {
+    const { engine, requests } = await bootHidden();
+    await engine.backfill({ budget: 1 });
+    expect(requests.at(-1)?.priority).toBe('background');
+
+    await engine.ask({ query: 'team plan cost', currentUrl: `${HIDDEN_ORIGIN}/pricing.html` });
+    // A question someone is waiting on is not deferred behind anything.
+    expect(requests.at(-1)?.priority).toBe('interactive');
+  });
+
+  it('resumes where it left off rather than starting over', async () => {
+    const first = await bootHidden();
+    await first.engine.backfill({ budget: 2 });
+    const readFirst = first.requests.map((r) => r.url);
+
+    // A new engine over the same IndexedDB: the visitor came back.
+    const second = await bootHidden();
+    await second.engine.backfill({ budget: 2 });
+    const readSecond = second.requests.map((r) => r.url);
+
+    expect(readSecond).not.toHaveLength(0);
+    for (const url of readSecond) expect(readFirst).not.toContain(url);
+    // Three of the four manifest entries are indexable, so the second pass
+    // finishes the job rather than repeating any of the first.
+    expect(second.engine.stats().pages).toBe(3);
+  });
+
+  it('keeps everything it read when a pass is interrupted', async () => {
+    const first = await bootHidden();
+    await first.engine.backfill({ budget: 1 });
+    expect(first.engine.stats().pages).toBe(1);
+
+    // Reload: nothing is re-fetched to get back to where we were.
+    const second = await bootHidden();
+    expect(second.engine.stats().pages).toBe(1);
+    expect(second.requests).toEqual([]);
+  });
+
+  it('does not retry a page it already found unusable', async () => {
+    const first = await bootHidden();
+    await first.engine.backfill({ budget: 10 });
+    expect(first.requests.map((r) => r.url)).toContain('/missing.html');
+
+    const second = await bootHidden();
+    await second.engine.backfill({ budget: 10 });
+    expect(second.requests.map((r) => r.url)).not.toContain('/missing.html');
+  });
+
+  it('reports completion once the manifest is exhausted', async () => {
+    const { engine } = await bootHidden();
+    const result = await engine.backfill({ budget: 10 });
+
+    expect(result.completed).toBe(true);
+    expect(result.remaining).toBe(0);
+    expect(result.skipped).toBe(1); // the empty page
+    expect(result.indexed).toBe(3);
+  });
+
+  it('does nothing on a second pass with nothing left to read', async () => {
+    const { engine, requests } = await bootHidden();
+    await engine.backfill({ budget: 10 });
+    const spent = requests.length;
+
+    const again = await engine.backfill({ budget: 10 });
+    expect(again.indexed).toBe(0);
+    expect(again.completed).toBe(true);
+    expect(requests).toHaveLength(spent);
+  });
+
+  it('joins concurrent callers to one pass instead of crawling twice', async () => {
+    const { engine, requests } = await bootHidden();
+    const [a, b] = await Promise.all([engine.backfill({ budget: 10 }), engine.backfill({ budget: 10 })]);
+
+    expect(a).toEqual(b);
+    expect(new Set(requests.map((r) => r.url)).size).toBe(requests.length);
+  });
+
+  it('stops when cancelled, and keeps what it had read', async () => {
+    const { engine } = await bootHidden();
+
+    const running = engine.backfill({ budget: 10 });
+    engine.cancelBackfill();
+    const result = await running;
+
+    expect(result.cancelled).toBe(true);
+    expect(result.completed).toBe(false);
+    // The page in flight when the cancel landed is still indexed, not discarded.
+    expect(engine.stats().pages).toBe(result.indexed);
+  });
+
+  it('stands aside while a question is in flight', async () => {
+    // Fetches are handed out one at a time so the interleaving is observable
+    // rather than a matter of timing.
+    const gate: { url: string; release: () => void }[] = [];
+    const order: string[] = [];
+
+    const { engine } = await bootHidden({
+      fetchPage: (params: HostFetchParams) =>
+        new Promise<HostFetchResult>((resolve) => {
+          const path = new URL(params.url).pathname;
+          order.push(`${params.priority}:${path}`);
+          gate.push({
+            url: path,
+            release: () => {
+              const html = HIDDEN_PAGES[path];
+              resolve(
+                html === undefined
+                  ? { kind: 'gone' }
+                  : { kind: 'page', page: extractFromHtml(html, params.url) },
+              );
+            },
+          });
+        }),
+    });
+
+    const backfilling = engine.backfill({ budget: 10 });
+    // The pass reaches its first fetch through several awaits, IndexedDB among
+    // them, so wait for the fetch rather than for a fixed number of ticks.
+    await until(() => gate.length > 0);
+    expect(gate).toHaveLength(1); // one background fetch open
+
+    const asking = engine
+      .ask({ query: 'team plan cost', currentUrl: `${HIDDEN_ORIGIN}/pricing.html` })
+      .then((result) => {
+        order.push('ask:done');
+        return result;
+      });
+
+    let finished = false;
+    const both = Promise.all([asking, backfilling]).finally(() => {
+      finished = true;
+    });
+    while (!finished) {
+      gate.shift()?.release();
+      await settle();
+    }
+    await both;
+
+    // The pass issued its first page before the question arrived. Its second
+    // waited for the question to finish, rather than making the person who
+    // asked it queue behind a page nobody requested.
+    const background = order.flatMap((entry, i) => (entry.startsWith('background:') ? [i] : []));
+    expect(background.length).toBeGreaterThan(1);
+    expect(background[1]).toBeGreaterThan(order.indexOf('ask:done'));
+  });
+
+  it('offers topics from URL structure before anything is fetched', async () => {
+    const { engine, requests } = await bootHidden();
+    const topics = engine.topics();
+
+    expect(requests).toEqual([]);
+    expect(topics.total).toBe(4);
+    expect(topics.enriched).toBe(0);
+    expect(topics.suggestions.length).toBeGreaterThan(0);
+  });
+
+  it('sharpens topics into the site’s own words as pages are read', async () => {
+    const { engine } = await bootHidden();
+    const before = engine.topics();
+    expect(before.suggestions.map((s) => s.text)).not.toContain('Rotate tokens');
+
+    await engine.backfill({ budget: 10 });
+    const after = engine.topics();
+
+    expect(after.enriched).toBe(3);
+    // Slug guesses like "notes" have been replaced by the page's real title.
+    expect(after.suggestions.map((s) => s.text)).toContain('Rotate tokens');
+  });
+
+  it('reports progress so a widget can say what it is doing', async () => {
+    const { engine, notices } = await bootHidden();
+    await engine.backfill({ budget: 2 });
+
+    const progress = notices.filter((n) => n.type === EVENT.enrichProgress);
+    expect(progress.length).toBeGreaterThan(0);
+    expect(notices.some((n) => n.type === EVENT.enrichDone)).toBe(true);
+  });
+});
+
+/** Let every queued microtask and timer callback run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Wait for a condition rather than for an arbitrary number of ticks. */
+async function until(condition: () => boolean, ticks = 200): Promise<void> {
+  for (let i = 0; i < ticks; i += 1) {
+    if (condition()) return;
+    await settle();
+  }
+  throw new Error('condition never became true');
+}

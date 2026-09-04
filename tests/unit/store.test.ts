@@ -15,6 +15,7 @@ const KEY = buildCacheKey({
   embedderId: 'Xenova/all-MiniLM-L6-v2@q8',
   chunkerVersion: 1,
   extractorVersion: 1,
+  enrichmentVersion: 1,
   siteVersion: null,
 });
 
@@ -124,6 +125,7 @@ describe('KnowledgeStore, invalidation', () => {
       embedderId: 'Xenova/bge-small-en-v1.5@q8',
       chunkerVersion: 1,
       extractorVersion: 1,
+      enrichmentVersion: 1,
       siteVersion: null,
     });
 
@@ -146,6 +148,7 @@ describe('KnowledgeStore, invalidation', () => {
       embedderId: 'Xenova/all-MiniLM-L6-v2@q8',
       chunkerVersion: 1,
       extractorVersion: 1,
+      enrichmentVersion: 1,
       siteVersion: 'deploy-2',
     });
 
@@ -166,6 +169,7 @@ describe('KnowledgeStore, invalidation', () => {
       embedderId: 'm',
       chunkerVersion: 1,
       extractorVersion: 1,
+      enrichmentVersion: 1,
       siteVersion: null,
     };
     const key = buildCacheKey(base);
@@ -174,6 +178,7 @@ describe('KnowledgeStore, invalidation', () => {
     expect(buildCacheKey({ ...base, embedderId: 'other' })).not.toBe(key);
     expect(buildCacheKey({ ...base, chunkerVersion: 2 })).not.toBe(key);
     expect(buildCacheKey({ ...base, extractorVersion: 2 })).not.toBe(key);
+    expect(buildCacheKey({ ...base, enrichmentVersion: 2 })).not.toBe(key);
     expect(buildCacheKey({ ...base, siteVersion: 'v2' })).not.toBe(key);
     expect(buildCacheKey({ ...base })).toBe(key);
   });

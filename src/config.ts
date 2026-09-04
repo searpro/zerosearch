@@ -1,4 +1,4 @@
-import type { Generate, Position, Preload, Theme, Tier, WebAIConfig } from './types.js';
+import type { Enrich, Generate, Position, Preload, Theme, Tier, WebAIConfig } from './types.js';
 import { TIERS } from './types.js';
 
 export const DEFAULT_CONFIG: WebAIConfig = {
@@ -7,6 +7,8 @@ export const DEFAULT_CONFIG: WebAIConfig = {
   modelBaseUrl: null,
   libraryUrl: null,
   generate: 'ask',
+  enrich: 'idle',
+  enrichPages: 25,
   indexUrl: null,
   maxPages: 500,
   version: null,
@@ -29,6 +31,8 @@ export interface ResolvedConfig {
 }
 
 const MAX_PAGES_RANGE = [1, 5000] as const;
+/** Zero is a legitimate setting: it disables the pass without disabling the config. */
+const ENRICH_PAGES_RANGE = [0, 5000] as const;
 
 function pickEnum<T extends string>(
   raw: string | null | undefined,
@@ -122,6 +126,8 @@ export function resolveConfig(
     modelBaseUrl: pickUrl(attrs['modelBaseUrl'], d.modelBaseUrl, base, 'data-model-base-url', warnings),
     libraryUrl: pickUrl(attrs['libraryUrl'], d.libraryUrl, base, 'data-library-url', warnings),
     generate: pickEnum<Generate>(attrs['generate'], ['ask', 'auto', 'never'], d.generate, 'data-generate', warnings),
+    enrich: pickEnum<Enrich>(attrs['enrich'], ['idle', 'never'], d.enrich, 'data-enrich', warnings),
+    enrichPages: pickInt(attrs['enrichPages'], d.enrichPages, ENRICH_PAGES_RANGE, 'data-enrich-pages', warnings),
     indexUrl: pickUrl(attrs['index'], d.indexUrl, base, 'data-index', warnings, { warnCrossOrigin: true }),
     maxPages: pickInt(attrs['maxPages'], d.maxPages, MAX_PAGES_RANGE, 'data-max-pages', warnings),
     version: attrs['version']?.trim() || d.version,

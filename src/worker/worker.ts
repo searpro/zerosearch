@@ -2,6 +2,7 @@ import {
   HOST,
   WORKER,
   type AskParams,
+  type BackfillParams,
   type HostFetchParams,
   type HostFetchResult,
   type HostManifestResult,
@@ -43,6 +44,14 @@ peer.handle(WORKER.init, async (params: InitParams) => {
 
 peer.handle(WORKER.ensureManifest, () => require().ensureManifest());
 peer.handle(WORKER.ask, (params: AskParams) => require().ask(params));
+peer.handle(WORKER.backfill, (params: BackfillParams) => require().backfill(params ?? {}));
+// Deliberately synchronous: a cancel that queued behind the pass it is
+// cancelling would be heard only once that pass had finished.
+peer.handle(WORKER.cancelBackfill, () => {
+  engine?.cancelBackfill();
+  return null;
+});
+peer.handle(WORKER.topics, ({ limit }: { limit?: number } = {}) => require().topics(limit));
 peer.handle(WORKER.enableGeneration, () => require().enableGeneration());
 peer.handle(WORKER.generationStatus, () => require().generationStatus());
 peer.handle(WORKER.revalidate, () => require().revalidate());

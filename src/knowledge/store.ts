@@ -32,8 +32,38 @@ export interface StoredPage {
 }
 
 export interface StoredManifestEntry extends ManifestEntry {
-  /** Embedding of the slug title and path, used for routing before any fetch. */
+  /**
+   * Embedding of whatever routing currently knows about this page: its slug
+   * before it has been fetched, its real title, description and summary after.
+   */
   vector?: Float32Array;
+  /** The page's own meta description: one curated line, written by the site. */
+  description?: string | null;
+  /** Extractive summary of the page. Absent until the page has been enriched. */
+  summary?: string;
+  /** Verbatim interrogative headings, offered as things to ask. */
+  questions?: string[];
+  /** Breadcrumb category, which can file a page where its URL does not. */
+  category?: string | null;
+  /** When enrichment last ran for this entry. Absent means slug-only. */
+  enrichedAt?: number;
+}
+
+/**
+ * Where the background backfill got to.
+ *
+ * Deliberately thin: which pages are indexed is already recorded by the `pages`
+ * store, transactionally, one page at a time. That *is* the resume point, and
+ * deriving it from the real data cannot drift from it the way a separate cursor
+ * would. The only thing needing its own record is the pages we tried and cannot
+ * use — without it, a resumed pass retries the same 404 on every visit.
+ */
+export interface BackfillState {
+  /** URLs fetched and found unindexable: gone, empty, or refused by robots. */
+  skipped: string[];
+  startedAt: number | null;
+  /** Set when a pass ran out of manifest rather than out of budget. */
+  completedAt: number | null;
 }
 
 export interface Meta {
@@ -41,9 +71,17 @@ export interface Meta {
   manifestBuiltAt: number | null;
   /** Last time revalidation ran, so we do not re-check on every navigation. */
   revalidatedAt: number | null;
+  backfill: BackfillState;
 }
 
-const EMPTY_META: Meta = { cacheKey: '', manifestBuiltAt: null, revalidatedAt: null };
+const EMPTY_BACKFILL: BackfillState = { skipped: [], startedAt: null, completedAt: null };
+
+const EMPTY_META: Meta = {
+  cacheKey: '',
+  manifestBuiltAt: null,
+  revalidatedAt: null,
+  backfill: EMPTY_BACKFILL,
+};
 
 export class KnowledgeStore {
   readonly cacheKey: string;
@@ -80,7 +118,10 @@ export class KnowledgeStore {
 
   async getMeta(): Promise<Meta> {
     const stored = await this.#get<Meta>('meta', META_KEY);
-    return stored ?? { ...EMPTY_META };
+    if (!stored) return { ...EMPTY_META, backfill: { ...EMPTY_BACKFILL } };
+    // A record written before `backfill` existed is still a valid cache — the
+    // vectors in it are fine — so fill the field in rather than discarding it.
+    return { ...EMPTY_META, ...stored, backfill: { ...EMPTY_BACKFILL, ...stored.backfill } };
   }
 
   async setMeta(patch: Partial<Meta>): Promise<void> {
@@ -94,6 +135,17 @@ export class KnowledgeStore {
       store.clear();
       for (const entry of entries) store.put(entry, entry.url);
     });
+  }
+
+  /**
+   * Update one manifest entry.
+   *
+   * Enrichment touches a single page at a time, and rewriting all several
+   * hundred entries for each one turns a background pass into quadratic
+   * IndexedDB traffic on exactly the devices least able to absorb it.
+   */
+  async putManifestEntry(entry: StoredManifestEntry): Promise<void> {
+    await this.#run('manifest', 'readwrite', (store) => store.put(entry, entry.url));
   }
 
   async getManifest(): Promise<StoredManifestEntry[]> {
@@ -245,6 +297,7 @@ export function buildCacheKey(parts: {
   embedderId: string;
   chunkerVersion: number;
   extractorVersion: number;
+  enrichmentVersion: number;
   siteVersion: string | null;
 }): string {
   return [
@@ -253,6 +306,10 @@ export function buildCacheKey(parts: {
     parts.embedderId,
     `c${parts.chunkerVersion}`,
     `x${parts.extractorVersion}`,
+    // Enrichment decides what a routing entry says about a page it has read.
+    // Changing that changes which pages a question reaches, and the stored
+    // summaries cannot be rebuilt without refetching, so a bump starts over.
+    `e${parts.enrichmentVersion}`,
     parts.siteVersion ?? '-',
   ].join('|');
 }

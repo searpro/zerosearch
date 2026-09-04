@@ -105,3 +105,33 @@ describe('readScriptAttributes', () => {
     expect(attrs['src']).toBeUndefined();
   });
 });
+
+describe('resolveConfig: background enrichment', () => {
+  it('reads the site ahead of being asked by default', () => {
+    const { config } = resolveConfig({});
+    expect(config.enrich).toBe('idle');
+    expect(config.enrichPages).toBe(25);
+  });
+
+  it('can be turned off outright', () => {
+    expect(resolveConfig({ enrich: 'never' }).config.enrich).toBe('never');
+  });
+
+  it('treats a zero budget as a legitimate way to disable it', () => {
+    const { config, warnings } = resolveConfig({ enrichPages: '0' });
+    expect(config.enrichPages).toBe(0);
+    expect(warnings).toEqual([]);
+  });
+
+  it('falls back rather than throwing on a value it cannot use', () => {
+    const { config, warnings } = resolveConfig({ enrich: 'sometimes' });
+    expect(config.enrich).toBe('idle');
+    expect(warnings.join(' ')).toContain('data-enrich');
+  });
+
+  it('clamps a budget the site owner set too high', () => {
+    const { config, warnings } = resolveConfig({ enrichPages: '99999' });
+    expect(config.enrichPages).toBe(5000);
+    expect(warnings.join(' ')).toContain('data-enrich-pages');
+  });
+});

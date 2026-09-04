@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeUrl, parseSitemap } from '../../src/dom/manifest.js';
+import { canonicalUrl } from '../../src/knowledge/urls.js';
 import { isAllowed, parseRobots } from '../../src/knowledge/robots.js';
 
 const BASE = 'https://example.com/sitemap.xml';
@@ -173,5 +174,37 @@ describe('robots.txt', () => {
     const robots = parseRobots('User-agent: *\nDisallow: /a+b(c)');
     expect(isAllowed(robots, '/a+b(c)/x')).toBe(false);
     expect(isAllowed(robots, '/aaab')).toBe(true);
+  });
+});
+
+describe('canonicalUrl', () => {
+  it('drops a fragment, which never identifies a different page', () => {
+    expect(canonicalUrl('https://m.example/docs/api.html#errors')).toBe(
+      'https://m.example/docs/api.html',
+    );
+  });
+
+  it('prefers the canonical the page declares', () => {
+    // A visitor from a campaign link would otherwise be indexed as a page of
+    // their own — a duplicate crawl and a routing entry that matches nothing.
+    expect(
+      canonicalUrl('https://m.example/pricing.html?utm_source=news', '/pricing.html'),
+    ).toBe('https://m.example/pricing.html');
+  });
+
+  it('keeps a query string when the page does not declare a canonical', () => {
+    // `?id=` really is a distinct page on plenty of sites, and we cannot tell
+    // that apart from tracking noise without being told.
+    expect(canonicalUrl('https://m.example/item?id=7')).toBe('https://m.example/item?id=7');
+  });
+
+  it('ignores a cross-origin canonical rather than crawling somewhere else', () => {
+    expect(canonicalUrl('https://m.example/a.html', 'https://elsewhere.example/a.html')).toBe(
+      'https://m.example/a.html',
+    );
+  });
+
+  it('falls back to the URL it was given when either is unparseable', () => {
+    expect(canonicalUrl('not a url', 'also not')).toBe('not a url');
   });
 });

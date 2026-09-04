@@ -1,5 +1,6 @@
 import { extractFromHtml } from '../dom/extract.js';
 import { PoliteFetcher, SkippedError } from '../dom/fetcher.js';
+import { whenIdle } from '../dom/idle.js';
 import { parseSitemap } from '../dom/manifest.js';
 import { describeUrl } from '../dom/manifest.js';
 import { parseRobots } from '../knowledge/robots.js';
@@ -43,8 +44,14 @@ export class Host {
     peer.handle<void, HostManifestResult>(HOST.manifest, () => this.manifest());
   }
 
-  async fetchPage({ url, etag, lastModified }: HostFetchParams): Promise<HostFetchResult> {
+  async fetchPage({ url, etag, lastModified, priority }: HostFetchParams): Promise<HostFetchResult> {
     await this.#ensureRobots();
+
+    // Reading ahead waits for the browser to have nothing better to do. The
+    // visitor came for the host page; a background crawl that costs them
+    // dropped frames has taken more than it gives. `whenIdle` has a timeout, so
+    // a permanently busy page still makes progress, just slowly.
+    if (priority === 'background') await whenIdle(2000);
 
     try {
       const response = await this.#fetcher.fetchPage(url, { etag, lastModified });

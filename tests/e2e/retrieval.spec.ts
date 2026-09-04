@@ -47,6 +47,13 @@ test.describe('retrieval quality', () => {
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
+    // This suite measures cold, just-in-time routing: what a visitor gets from
+    // their very first question, before anything has been read ahead. Phase 3's
+    // background pass would otherwise index the site underneath the run and
+    // turn a floor into a coin toss.
+    await page.addInitScript(() => {
+      (window as unknown as { WebAIConfig: unknown }).WebAIConfig = { enrich: 'never' };
+    });
   });
 
   test.afterAll(async () => {
@@ -115,8 +122,10 @@ test.describe('retrieval quality', () => {
       .map((m) => `  "${m.case.query}" -> ${m.page ?? 'nothing'} (want ${m.case.expect!.join(' | ')})`)
       .join('\n');
 
-    // A floor, not a target. Routing works from URL slugs until a page has been
-    // fetched, so pages whose slug does not describe them are reached late.
+    // A floor, not a target, and specifically the floor for a cold first
+    // question. Routing works from URL slugs until a page has been fetched, so
+    // pages whose slug does not describe them are reached late. `enrichment.spec`
+    // measures what the background pass does to this same set.
     expect(hits.length / scored.length, `misses:\n${report}`).toBeGreaterThanOrEqual(0.75);
     expect(answerable.length).toBeGreaterThan(0);
   });

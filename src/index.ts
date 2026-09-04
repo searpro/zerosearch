@@ -2,7 +2,7 @@ import { readScriptAttributes, resolveConfig } from './config.js';
 import { whenIdle } from './dom/idle.js';
 import { Emitter } from './engine/events.js';
 import { Orchestrator } from './engine/orchestrator.js';
-import type { AskResult, GenerationStatus, StatsResult } from './engine/protocol.js';
+import type { AskResult, BackfillResult, GenerationStatus, StatsResult, TopicsResult } from './engine/protocol.js';
 import type { Transport } from './engine/rpc.js';
 import type { WebAIConfig, WebAIEvent, WebAIEventMap, WebAIEventName } from './types.js';
 import { Widget } from './ui/widget.js';
@@ -47,7 +47,10 @@ export class WebAI {
   async #boot(overrides: Partial<WebAIConfig>): Promise<void> {
     this.#scriptEl ??= findScriptTag();
     const attrs = this.#scriptEl ? readScriptAttributes(this.#scriptEl) : {};
-    const { config, warnings } = resolveConfig(attrs, overrides);
+    // Least specific first: defaults, the script tag, the page's global, then
+    // whatever `boot()` was handed. The global exists for pages whose script
+    // tag is written by a CMS or tag manager and cannot carry data attributes.
+    const { config, warnings } = resolveConfig(attrs, { ...globalOverrides(), ...overrides });
     this.#config = config;
 
     if (warnings.length > 0 && config.debug) {
@@ -75,7 +78,13 @@ export class WebAI {
       widget.onFirstOpen = () => {
         void this.#orchestrator
           ?.prepare()
-          .then(() => this.#refreshGenerationOffer())
+          .then(async () => {
+            // Topics first: it needs only the manifest, and it is what fills the
+            // empty panel the visitor is looking at right now.
+            await this.#refreshTopics();
+            await this.#refreshGenerationOffer();
+            await this.#autoEnrich();
+          })
           .catch(() => {});
       };
       this.#wireStatus();
@@ -87,8 +96,29 @@ export class WebAI {
 
     if (config.preload === 'idle') {
       // Behind the browser's own work: the visitor came for the page, not for us.
-      void whenIdle(3000).then(() => this.#orchestrator?.prepare().catch(() => {}));
+      void whenIdle(3000).then(() => this.#prepareThenEnrich());
     }
+  }
+
+  /**
+   * Get the manifest in place, then read ahead if the site allows it.
+   *
+   * Ordered, not parallel: the background pass walks the manifest, so starting
+   * it before the manifest exists would find nothing to do and stop.
+   */
+  async #prepareThenEnrich(): Promise<void> {
+    try {
+      await this.#orchestrator?.prepare();
+    } catch {
+      return;
+    }
+    await this.#autoEnrich();
+  }
+
+  /** The pass we start by ourselves — the one `data-enrich` governs. */
+  async #autoEnrich(): Promise<void> {
+    if (this.#config?.enrich !== 'idle') return;
+    await this.enrich();
   }
 
   /** Ask a question. Starts the engine on demand if it is not running yet. */
@@ -103,6 +133,64 @@ export class WebAI {
     await this.boot();
     await this.#orchestrator?.prepare();
     await this.#refreshGenerationOffer();
+  }
+
+  /**
+   * Read the rest of the site in the background, so questions about pages
+   * nobody has visited can still be answered.
+   *
+   * Bounded by `data-enrich-pages`, idle-scheduled, and resumable — a visitor
+   * who navigates away mid-pass keeps everything read up to that point.
+   *
+   * Calling this does what it says regardless of `data-enrich`, the same way
+   * `prepare()` works under `data-preload="never"`. That attribute governs
+   * whether the pass starts *on its own*; a call from the site's own code is
+   * the site asking for it, which is more specific than a default it set once.
+   */
+  async enrich(options: { budget?: number } = {}): Promise<BackfillResult | null> {
+    await this.boot();
+    const config = this.#config;
+    if (!config) return null;
+
+    const budget = options.budget ?? config.enrichPages;
+    if (budget <= 0) return null;
+
+    try {
+      const result = (await this.#orchestrator?.enrich({ budget })) ?? null;
+      // The affordance is built from the manifest, which the pass just improved.
+      if (result && result.indexed > 0) await this.#refreshTopics();
+      return result;
+    } catch {
+      // Reading ahead is an optimisation. Failing at it must not break asking.
+      return null;
+    }
+  }
+
+  /** Stop the background pass. What it has already read is kept. */
+  async cancelEnrichment(): Promise<void> {
+    await this.#orchestrator?.cancelEnrichment();
+  }
+
+  /**
+   * What this site can be asked about: a category tree from its URL structure,
+   * and questions drawn from its own headings.
+   *
+   * Cheap and immediate — no fetch, no model — so it can fill an empty chat
+   * panel on first open, and it sharpens as the background pass runs.
+   */
+  async topics(limit?: number): Promise<TopicsResult | null> {
+    await this.boot();
+    return (await this.#orchestrator?.topics(limit)) ?? null;
+  }
+
+  async #refreshTopics(): Promise<void> {
+    if (!this.#widget) return;
+    try {
+      const topics = await this.#orchestrator?.topics();
+      if (topics) this.#widget.showTopics(topics);
+    } catch {
+      // An empty panel is a worse experience, not a broken one.
+    }
   }
 
   /**
@@ -197,8 +285,18 @@ export class WebAI {
     this.#events.on('model:progress', ({ loaded, total }) => {
       if (total > 0) widget.setStatus(`Loading model ${Math.round((loaded / total) * 100)}%`);
     });
-    this.#events.on('index:start', ({ urls }) => widget.setStatus(`Reading ${urls} pages…`));
+    this.#events.on('index:start', ({ source, urls }) => {
+      widget.setStatus(source === 'backfill' ? 'Reading the site…' : `Reading ${urls} pages…`);
+    });
     this.#events.on('index:done', ({ pages }) => {
+      widget.setStatus(pages > 0 ? `${pages} pages indexed` : 'Ready');
+    });
+    this.#events.on('enrich:progress', ({ done, total }) => {
+      widget.setStatus(`Reading the site… ${done}/${total}`);
+    });
+    // Without this the status is left saying "Reading…" for the rest of the
+    // session, long after the pass that was reading has finished.
+    this.#events.on('enrich:done', ({ pages }) => {
       widget.setStatus(pages > 0 ? `${pages} pages indexed` : 'Ready');
     });
     this.#events.on('generation:ready', ({ modelLabel }) => widget.setStatus(`${modelLabel} ready`));
@@ -262,9 +360,22 @@ function domReady(): Promise<void> {
   });
 }
 
+/**
+ * Config set by the page rather than by the script tag.
+ *
+ * Read once, at boot. Anything unrecognised is ignored by `resolveConfig` the
+ * same way a bad attribute is — a widget must not break the page it is on.
+ */
+function globalOverrides(): Partial<WebAIConfig> {
+  const raw = typeof window === 'undefined' ? null : window.WebAIConfig;
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
 declare global {
   interface Window {
     WebAI?: WebAI;
+    /** Programmatic alternative to `data-*` attributes. See `globalOverrides`. */
+    WebAIConfig?: Partial<WebAIConfig>;
   }
 }
 
