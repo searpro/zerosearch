@@ -11,7 +11,7 @@ import type { Chunk, ManifestEntry } from './types.js';
  * incompatible generations of data.
  */
 
-export const DB_NAME = 'web-ai';
+export const DB_NAME = 'zerosearch';
 export const SCHEMA_VERSION = 1;
 
 const STORES = ['meta', 'manifest', 'pages', 'chunks', 'vectors'] as const;

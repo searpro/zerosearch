@@ -20,7 +20,7 @@ describe('Widget', () => {
     expect(document.body.contains(widget.element)).toBe(true);
     expect(root).toBeTruthy();
     expect(root.querySelector('.bubble')).toBeTruthy();
-    expect(root.querySelector('style')?.textContent).toContain('--wa-accent');
+    expect(root.querySelector('style')?.textContent).toContain('--zs-accent');
   });
 
   it('starts closed with the panel hidden', () => {
@@ -98,7 +98,7 @@ describe('Widget', () => {
   it('falls back rather than letting a hostile accent reach the stylesheet', () => {
     const accentOf = (accent: string) => {
       const { root } = make({ accent });
-      return /--wa-accent:\s*([^;]*);/.exec(root.querySelector('style')!.textContent!)?.[1];
+      return /--zs-accent:\s*([^;]*);/.exec(root.querySelector('style')!.textContent!)?.[1];
     };
 
     // Declaration break-out, and the url() exfiltration channel a blocklist would miss.
@@ -110,7 +110,7 @@ describe('Widget', () => {
   it('passes real colours through untouched', () => {
     const accentOf = (accent: string) => {
       const { root } = make({ accent });
-      return /--wa-accent:\s*([^;]*);/.exec(root.querySelector('style')!.textContent!)?.[1];
+      return /--zs-accent:\s*([^;]*);/.exec(root.querySelector('style')!.textContent!)?.[1];
     };
 
     expect(accentOf('#ff0000')).toBe('#ff0000');

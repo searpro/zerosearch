@@ -1,4 +1,4 @@
-import type { WebAIConfig } from '../types.js';
+import type { ZeroSearchConfig } from '../types.js';
 import type { Emitter } from './events.js';
 import { Host } from './host.js';
 import {
@@ -28,7 +28,7 @@ import { RpcPeer, type Transport } from './rpc.js';
  */
 
 export interface OrchestratorOptions {
-  config: WebAIConfig;
+  config: ZeroSearchConfig;
   workerUrl: string;
   events: Emitter;
   /** Injection point for tests, which drive a fake worker over a MessageChannel. */
@@ -149,7 +149,7 @@ export class Orchestrator {
     const build = async (): Promise<BuildManifestResult> =>
       await this.#call<BuildManifestResult>(WORKER.ensureManifest);
 
-    const result = await withLock(`web-ai:manifest:${location.origin}`, build);
+    const result = await withLock(`zerosearch:manifest:${location.origin}`, build);
 
     const stats = await this.stats();
     events.emit('index:done', {
@@ -197,7 +197,7 @@ export class Orchestrator {
    */
   async enrich(options: { budget?: number } = {}): Promise<BackfillResult> {
     await this.prepare();
-    return await withLock(`web-ai:backfill:${location.origin}`, () =>
+    return await withLock(`zerosearch:backfill:${location.origin}`, () =>
       this.#call<BackfillResult>(WORKER.backfill, options),
     );
   }

@@ -8,14 +8,14 @@ const r = (p: string) => resolve(here, p);
 /**
  * Three build targets, each with a different job:
  *
- *  - `main`   -> `web-ai.js`, the IIFE a site puts in a <script> tag. Config,
+ *  - `main`   -> `zerosearch.js`, the IIFE a site puts in a <script> tag. Config,
  *                events, the widget shell and DOM extraction. No ML code, so it
  *                stays inside the size budget and costs a page view almost
  *                nothing. Exports nothing: Vite assigns an IIFE's module
- *                namespace to the global, which would clobber `window.WebAI`.
- *  - `lib`    -> `web-ai.mjs`, the ESM build for npm consumers. Same code, but
+ *                namespace to the global, which would clobber `window.ZeroSearch`.
+ *  - `lib`    -> `zerosearch.mjs`, the ESM build for npm consumers. Same code, but
  *                keeps its named exports and installs no global of its own.
- *  - `worker` -> `web-ai.worker.js`, the heavy chunk bundling transformers.js.
+ *  - `worker` -> `zerosearch.worker.js`, the heavy chunk bundling transformers.js.
  *                Fetched lazily, once per browser, only when actually needed.
  *
  * The split is what keeps the main bundle small: an IIFE cannot code-split, so
@@ -25,15 +25,15 @@ const targets = {
   main: {
     entry: r('src/script-entry.ts'),
     formats: ['iife'] as const,
-    fileName: () => 'web-ai.js',
-    name: 'WebAIScript',
+    fileName: () => 'zerosearch.js',
+    name: 'ZeroSearchScript',
     empty: true,
   },
   lib: {
     entry: r('src/index.ts'),
     formats: ['es'] as const,
-    fileName: () => 'web-ai.mjs',
-    name: 'WebAI',
+    fileName: () => 'zerosearch.mjs',
+    name: 'ZeroSearch',
     empty: false,
   },
   // ES module, not IIFE. An IIFE cannot code-split, so Rollup inlines every
@@ -44,8 +44,8 @@ const targets = {
   worker: {
     entry: r('src/worker/worker.ts'),
     formats: ['es'] as const,
-    fileName: () => 'web-ai.worker.js',
-    name: 'WebAIWorker',
+    fileName: () => 'zerosearch.worker.js',
+    name: 'ZeroSearchWorker',
     empty: false,
   },
 };

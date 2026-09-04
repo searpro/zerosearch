@@ -20,7 +20,7 @@ export interface Robots {
   sitemaps: string[];
 }
 
-export const AGENT = 'web-ai';
+export const AGENT = 'zerosearch';
 
 export function parseRobots(text: string): Robots {
   const groups = new Map<string, RobotsRule[]>();

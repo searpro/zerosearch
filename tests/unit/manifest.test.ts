@@ -146,14 +146,14 @@ describe('robots.txt', () => {
 
   it('prefers a group naming us over the wildcard group', () => {
     const robots = parseRobots(
-      'User-agent: *\nDisallow: /\n\nUser-agent: web-ai\nDisallow: /admin/',
+      'User-agent: *\nDisallow: /\n\nUser-agent: zerosearch\nDisallow: /admin/',
     );
     expect(isAllowed(robots, '/anything')).toBe(true);
     expect(isAllowed(robots, '/admin/x')).toBe(false);
   });
 
   it('applies consecutive User-agent lines to one shared rule block', () => {
-    const robots = parseRobots('User-agent: googlebot\nUser-agent: web-ai\nDisallow: /nope/');
+    const robots = parseRobots('User-agent: googlebot\nUser-agent: zerosearch\nDisallow: /nope/');
     expect(isAllowed(robots, '/nope/x')).toBe(false);
     expect(isAllowed(robots, '/yes/x')).toBe(true);
   });

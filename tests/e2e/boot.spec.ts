@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 // The widget lives in an open shadow root; Playwright pierces it automatically.
-const BUBBLE = 'web-ai-root >> .bubble';
-const PANEL = 'web-ai-root >> .panel';
+const BUBBLE = 'zerosearch-root >> .bubble';
+const PANEL = 'zerosearch-root >> .panel';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/demo/index.html');
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 
 test('boots from the script tag and installs the instance, not the namespace', async ({ page }) => {
   const api = await page.evaluate(() => {
-    const w = (window as unknown as { WebAI?: Record<string, unknown> }).WebAI;
+    const w = (window as unknown as { ZeroSearch?: Record<string, unknown> }).ZeroSearch;
     return {
       type: typeof w,
       open: typeof w?.['open'],
@@ -19,7 +19,7 @@ test('boots from the script tag and installs the instance, not the namespace', a
       // A module namespace would carry the class and the default export here.
       // Asserting their absence pins the regression without depending on a
       // class name, which minification renames in the production build.
-      namespaceClass: typeof w?.['WebAI'],
+      namespaceClass: typeof w?.['ZeroSearch'],
       namespaceDefault: typeof w?.['default'],
     };
   });
@@ -33,7 +33,7 @@ test('boots from the script tag and installs the instance, not the namespace', a
 });
 
 test('resolves data-* config against the document base', async ({ page }) => {
-  const config = await page.evaluate(() => (window as any).WebAI.config);
+  const config = await page.evaluate(() => (window as any).ZeroSearch.config);
   expect(config.sitemapUrl).toBe('http://localhost:5173/demo/sitemap.xml');
   expect(config.maxTier).toBe('small');
   expect(config.debug).toBe(true);
@@ -49,7 +49,7 @@ test('opens and closes on click', async ({ page }) => {
   await expect(page.locator(PANEL)).toBeVisible();
   await expect(page.locator(BUBBLE)).toBeHidden();
 
-  await page.locator('web-ai-root >> .close').click();
+  await page.locator('zerosearch-root >> .close').click();
   await expect(page.locator(PANEL)).toBeHidden();
   await expect(page.locator(BUBBLE)).toBeVisible();
 });
@@ -64,11 +64,11 @@ test('closes on Escape', async ({ page }) => {
 test('emits open and close through the onEvent hook', async ({ page }) => {
   await page.evaluate(() => {
     (window as any).__events = [];
-    (window as any).WebAI.onEvent((e: { type: string }) => (window as any).__events.push(e.type));
+    (window as any).ZeroSearch.onEvent((e: { type: string }) => (window as any).__events.push(e.type));
   });
 
   await page.locator(BUBBLE).click();
-  await page.locator('web-ai-root >> .close').click();
+  await page.locator('zerosearch-root >> .close').click();
 
   expect(await page.evaluate(() => (window as any).__events)).toEqual(['open', 'close']);
 });

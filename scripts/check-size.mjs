@@ -6,7 +6,7 @@ import { gzipSync, brotliCompressSync } from 'node:zlib';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const BUDGETS = [{ file: 'dist/web-ai.js', maxBrotli: 30 * 1024, label: 'main (script tag)' }];
+const BUDGETS = [{ file: 'dist/zerosearch.js', maxBrotli: 30 * 1024, label: 'main (script tag)' }];
 
 const kb = (n) => `${(n / 1024).toFixed(1)}KB`;
 
@@ -32,7 +32,7 @@ for (const { file, maxBrotli, label } of BUDGETS) {
 
 // Reported, not budgeted: fetched lazily, once per browser.
 try {
-  const raw = await readFile(join(process.cwd(), 'dist/web-ai.worker.js'));
+  const raw = await readFile(join(process.cwd(), 'dist/zerosearch.worker.js'));
   console.log(
     `  ${'worker (lazy)'.padEnd(20)} ${kb(raw.length).padStart(9)} raw ${kb(gzipSync(raw).length).padStart(9)} gzip ` +
       `${kb(brotliCompressSync(raw).length).padStart(9)} brotli`,

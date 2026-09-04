@@ -4,25 +4,25 @@ import { Emitter } from './engine/events.js';
 import { Orchestrator } from './engine/orchestrator.js';
 import type { AskResult, BackfillResult, GenerationStatus, StatsResult, TopicsResult } from './engine/protocol.js';
 import type { Transport } from './engine/rpc.js';
-import type { WebAIConfig, WebAIEvent, WebAIEventMap, WebAIEventName } from './types.js';
+import type { ZeroSearchConfig, ZeroSearchEvent, ZeroSearchEventMap, ZeroSearchEventName } from './types.js';
 import { Widget } from './ui/widget.js';
 
 export const VERSION = '0.0.0';
 
-/** The `<script>` tag opts in by carrying `data-web-ai`. */
-const MARKER = 'data-web-ai';
+/** The `<script>` tag opts in by carrying `data-zerosearch`. */
+const MARKER = 'data-zerosearch';
 
-export class WebAI {
+export class ZeroSearch {
   readonly version = VERSION;
 
   #events = new Emitter((error) => this.#log('a listener threw', error));
-  #config: WebAIConfig | null = null;
+  #config: ZeroSearchConfig | null = null;
   #widget: Widget | null = null;
   #orchestrator: Orchestrator | null = null;
   #booting: Promise<void> | null = null;
   #scriptEl: HTMLScriptElement | null = null;
 
-  get config(): Readonly<WebAIConfig> | null {
+  get config(): Readonly<ZeroSearchConfig> | null {
     return this.#config;
   }
 
@@ -35,7 +35,7 @@ export class WebAI {
    * and no network happen here, so a page that embeds the script but is never
    * interacted with pays almost nothing.
    */
-  boot(overrides: Partial<WebAIConfig> = {}): Promise<void> {
+  boot(overrides: Partial<ZeroSearchConfig> = {}): Promise<void> {
     this.#booting ??= this.#boot(overrides).catch((error: unknown) => {
       // A widget failing must not surface as an unhandled rejection on the host page.
       this.#events.emit('error', { scope: 'boot', message: describe(error), cause: error });
@@ -44,7 +44,7 @@ export class WebAI {
     return this.#booting;
   }
 
-  async #boot(overrides: Partial<WebAIConfig>): Promise<void> {
+  async #boot(overrides: Partial<ZeroSearchConfig>): Promise<void> {
     this.#scriptEl ??= findScriptTag();
     const attrs = this.#scriptEl ? readScriptAttributes(this.#scriptEl) : {};
     // Least specific first: defaults, the script tag, the page's global, then
@@ -54,7 +54,7 @@ export class WebAI {
     this.#config = config;
 
     if (warnings.length > 0 && config.debug) {
-      for (const warning of warnings) console.warn(`[web-ai] ${warning}`);
+      for (const warning of warnings) console.warn(`[zerosearch] ${warning}`);
     }
     this.#log('config', config);
 
@@ -124,7 +124,7 @@ export class WebAI {
   /** Ask a question. Starts the engine on demand if it is not running yet. */
   async ask(query: string): Promise<AskResult> {
     await this.boot();
-    if (!this.#orchestrator) throw new Error('web-ai failed to boot');
+    if (!this.#orchestrator) throw new Error('zerosearch failed to boot');
     return await this.#orchestrator.ask(query);
   }
 
@@ -259,12 +259,12 @@ export class WebAI {
     this.#widget?.toggle();
   }
 
-  on<K extends WebAIEventName>(type: K, fn: (payload: WebAIEventMap[K]) => void): () => void {
+  on<K extends ZeroSearchEventName>(type: K, fn: (payload: ZeroSearchEventMap[K]) => void): () => void {
     return this.#events.on(type, fn);
   }
 
   /** Subscribe to everything. This is the hook a site pipes into its own analytics. */
-  onEvent(fn: (event: WebAIEvent) => void): () => void {
+  onEvent(fn: (event: ZeroSearchEvent) => void): () => void {
     return this.#events.onAny(fn);
   }
 
@@ -319,13 +319,13 @@ export class WebAI {
     // Test the pathname, not the whole URL: a dev server appends a cache-busting
     // query string, which makes a naive extension check on `src` always fail.
     if (src && !isTypeScript(src)) {
-      return { url: new URL('./web-ai.worker.js', src).href, type: 'module' };
+      return { url: new URL('./zerosearch.worker.js', src).href, type: 'module' };
     }
     return { url: new URL('./worker/worker.ts', import.meta.url).href, type: 'module' };
   }
 
   #log(...args: unknown[]): void {
-    if (this.#config?.debug) console.debug('[web-ai]', ...args);
+    if (this.#config?.debug) console.debug('[zerosearch]', ...args);
   }
 }
 
@@ -366,23 +366,23 @@ function domReady(): Promise<void> {
  * Read once, at boot. Anything unrecognised is ignored by `resolveConfig` the
  * same way a bad attribute is — a widget must not break the page it is on.
  */
-function globalOverrides(): Partial<WebAIConfig> {
-  const raw = typeof window === 'undefined' ? null : window.WebAIConfig;
+function globalOverrides(): Partial<ZeroSearchConfig> {
+  const raw = typeof window === 'undefined' ? null : window.ZeroSearchConfig;
   return raw && typeof raw === 'object' ? raw : {};
 }
 
 declare global {
   interface Window {
-    WebAI?: WebAI;
+    ZeroSearch?: ZeroSearch;
     /** Programmatic alternative to `data-*` attributes. See `globalOverrides`. */
-    WebAIConfig?: Partial<WebAIConfig>;
+    ZeroSearchConfig?: Partial<ZeroSearchConfig>;
   }
 }
 
-const instance: WebAI = (typeof window !== 'undefined' && window.WebAI) || new WebAI();
+const instance: ZeroSearch = (typeof window !== 'undefined' && window.ZeroSearch) || new ZeroSearch();
 
 if (typeof window !== 'undefined') {
-  window.WebAI = instance;
+  window.ZeroSearch = instance;
   // Auto-boot only when a marker script tag is present. Importing the module
   // directly gives you the API without anything appearing on the page.
   if (document.querySelector(`script[${MARKER}]`)) {

@@ -54,7 +54,7 @@ jobs:
         env:
           DEMO_ORIGIN: https://${{ github.repository_owner }}.github.io
           DEMO_BASE: /${{ github.event.repository.name }}
-          DEMO_SCRIPT: /${{ github.event.repository.name }}/web-ai.js
+          DEMO_SCRIPT: /${{ github.event.repository.name }}/zerosearch.js
         run: node demo/build-demo.mjs
 
       - name: Assemble the site
@@ -62,7 +62,7 @@ jobs:
           mkdir -p _site
           cp -r demo/. _site/
           rm -f _site/build-demo.mjs
-          cp dist/web-ai.js dist/web-ai.worker.js _site/
+          cp dist/zerosearch.js dist/zerosearch.worker.js _site/
           touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3

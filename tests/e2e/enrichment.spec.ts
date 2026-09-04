@@ -65,7 +65,7 @@ test.describe('progressive enrichment', () => {
     // Every pass in this suite is started explicitly, so the results say what
     // was read rather than what happened to have been read by the time we asked.
     await page.addInitScript(() => {
-      (window as unknown as { WebAIConfig: unknown }).WebAIConfig = { enrich: 'never' };
+      (window as unknown as { ZeroSearchConfig: unknown }).ZeroSearchConfig = { enrich: 'never' };
     });
     await page.goto(`${DEMO}index.html`);
   });
@@ -84,7 +84,7 @@ test.describe('progressive enrichment', () => {
     await reset(page);
 
     const result = await page.evaluate(
-      async (budget) => (await (window as any).WebAI.enrich({ budget })) as BackfillResult,
+      async (budget) => (await (window as any).ZeroSearch.enrich({ budget })) as BackfillResult,
       SITE_PAGES + 5,
     );
 
@@ -149,7 +149,7 @@ test.describe('progressive enrichment', () => {
     await reset(page);
 
     const first = await page.evaluate(
-      async (budget) => (await (window as any).WebAI.enrich({ budget })) as BackfillResult,
+      async (budget) => (await (window as any).ZeroSearch.enrich({ budget })) as BackfillResult,
       4,
     );
     expect(first.indexed).toBe(4);
@@ -159,13 +159,13 @@ test.describe('progressive enrichment', () => {
     // was committed as it was read, which is what makes this survivable.
     await page.reload();
     const afterReload = await page.evaluate(async () => {
-      await (window as any).WebAI.prepare();
-      return await (window as any).WebAI.stats();
+      await (window as any).ZeroSearch.prepare();
+      return await (window as any).ZeroSearch.stats();
     });
     expect(afterReload.pages).toBe(4);
 
     const second = await page.evaluate(
-      async (budget) => (await (window as any).WebAI.enrich({ budget })) as BackfillResult,
+      async (budget) => (await (window as any).ZeroSearch.enrich({ budget })) as BackfillResult,
       SITE_PAGES,
     );
 
@@ -174,7 +174,7 @@ test.describe('progressive enrichment', () => {
     expect(second.indexed).toBe(SITE_PAGES - 4);
     expect(second.completed).toBe(true);
 
-    const stats = await page.evaluate(async () => await (window as any).WebAI.stats());
+    const stats = await page.evaluate(async () => await (window as any).ZeroSearch.stats());
     expect(stats.pages).toBe(SITE_PAGES);
   });
 
@@ -187,8 +187,8 @@ test.describe('progressive enrichment', () => {
     page.on('request', listener);
 
     const result = await page.evaluate(async (budget) => {
-      await (window as any).WebAI.prepare();
-      return (await (window as any).WebAI.enrich({ budget })) as BackfillResult;
+      await (window as any).ZeroSearch.prepare();
+      return (await (window as any).ZeroSearch.enrich({ budget })) as BackfillResult;
     }, SITE_PAGES);
     page.off('request', listener);
 
@@ -202,8 +202,8 @@ test.describe('progressive enrichment', () => {
     await reset(page);
 
     const topics = await page.evaluate(async () => {
-      await (window as any).WebAI.prepare();
-      return (await (window as any).WebAI.topics()) as TopicsResult;
+      await (window as any).ZeroSearch.prepare();
+      return (await (window as any).ZeroSearch.topics()) as TopicsResult;
     });
 
     expect(topics.total).toBe(SITE_PAGES);
@@ -213,9 +213,9 @@ test.describe('progressive enrichment', () => {
   });
 
   test('sharpens topics into the site’s own questions once it has read them', async () => {
-    await page.evaluate(async (budget) => await (window as any).WebAI.enrich({ budget }), SITE_PAGES);
+    await page.evaluate(async (budget) => await (window as any).ZeroSearch.enrich({ budget }), SITE_PAGES);
 
-    const topics = await page.evaluate(async () => (await (window as any).WebAI.topics()) as TopicsResult);
+    const topics = await page.evaluate(async () => (await (window as any).ZeroSearch.topics()) as TopicsResult);
 
     expect(topics.enriched).toBe(SITE_PAGES);
     // Verbatim from the demo FAQ's own headings — not written by anything.
@@ -226,7 +226,7 @@ test.describe('progressive enrichment', () => {
     await page.reload();
 
     const rendered = await page.evaluate(async () => {
-      const api = (window as any).WebAI;
+      const api = (window as any).ZeroSearch;
       await api.boot();
       api.open();
       await api.prepare();
@@ -250,7 +250,7 @@ test.describe('progressive enrichment', () => {
   });
 
   test('files pages under the site’s own sections, not our URL layout', async () => {
-    const tree = await page.evaluate(async () => ((await (window as any).WebAI.topics()) as TopicsResult).tree);
+    const tree = await page.evaluate(async () => ((await (window as any).ZeroSearch.topics()) as TopicsResult).tree);
 
     // The demo is served from /demo/, which is a mount point rather than a
     // section. It must appear nowhere — not as a category, and not smuggled
@@ -264,7 +264,7 @@ test.describe('progressive enrichment', () => {
     await reset(page);
 
     const result = await page.evaluate(async (budget) => {
-      const api = (window as any).WebAI;
+      const api = (window as any).ZeroSearch;
       await api.prepare();
       const running = api.enrich({ budget }) as Promise<BackfillResult>;
       // Long enough for the pass to be under way, short enough that it cannot
@@ -286,11 +286,11 @@ test.describe('progressive enrichment', () => {
 /** Start from an empty store, the way a first-time visitor does. */
 async function reset(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(async () => {
-    indexedDB.deleteDatabase('web-ai');
+    indexedDB.deleteDatabase('zerosearch');
     await new Promise((r) => setTimeout(r, 300));
   });
   await page.reload();
-  await page.evaluate(async () => await (window as any).WebAI.prepare());
+  await page.evaluate(async () => await (window as any).ZeroSearch.prepare());
 }
 
 async function runGoldenSet(
@@ -300,7 +300,7 @@ async function runGoldenSet(
   return await page.evaluate(async (items: Case[]) => {
     const out = [];
     for (const item of items) {
-      const result = await (window as any).WebAI.ask(item.query);
+      const result = await (window as any).ZeroSearch.ask(item.query);
       const top = result.citations[0];
       out.push({
         case: item,

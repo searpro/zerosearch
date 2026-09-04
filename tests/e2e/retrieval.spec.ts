@@ -52,7 +52,7 @@ test.describe('retrieval quality', () => {
     // background pass would otherwise index the site underneath the run and
     // turn a floor into a coin toss.
     await page.addInitScript(() => {
-      (window as unknown as { WebAIConfig: unknown }).WebAIConfig = { enrich: 'never' };
+      (window as unknown as { ZeroSearchConfig: unknown }).ZeroSearchConfig = { enrich: 'never' };
     });
   });
 
@@ -70,17 +70,17 @@ test.describe('retrieval quality', () => {
     await page.goto(`${DEMO}index.html`);
     // Start from nothing so this measures a genuine cold visitor.
     await page.evaluate(async () => {
-      indexedDB.deleteDatabase('web-ai');
+      indexedDB.deleteDatabase('zerosearch');
       await new Promise((r) => setTimeout(r, 300));
     });
     await page.reload();
 
-    await page.evaluate(() => (window as any).WebAI.prepare());
+    await page.evaluate(() => (window as any).ZeroSearch.prepare());
 
     results = await page.evaluate(async (list: Case[]) => {
       const out = [];
       for (const item of list) {
-        const result = await (window as any).WebAI.ask(item.query);
+        const result = await (window as any).ZeroSearch.ask(item.query);
         const top = result.citations[0];
         out.push({
           case: item,
@@ -146,7 +146,7 @@ test.describe('retrieval quality', () => {
     // Second time round, everything needed is already in IndexedDB.
     const warm = await page.evaluate(async () => {
       const started = performance.now();
-      const result = await (window as any).WebAI.ask('how much does the team plan cost');
+      const result = await (window as any).ZeroSearch.ask('how much does the team plan cost');
       return { ms: performance.now() - started, fetched: result.fetched.length, grounded: result.grounded };
     });
 
@@ -158,8 +158,8 @@ test.describe('retrieval quality', () => {
   test('knowledge survives a reload', async () => {
     await page.reload();
     const stats = await page.evaluate(async () => {
-      await (window as any).WebAI.prepare();
-      return await (window as any).WebAI.stats();
+      await (window as any).ZeroSearch.prepare();
+      return await (window as any).ZeroSearch.stats();
     });
 
     expect(stats.pages).toBeGreaterThan(0);

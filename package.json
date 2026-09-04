@@ -1,16 +1,16 @@
 {
-  "name": "web-ai",
+  "name": "zerosearch",
   "version": "0.0.0",
-  "description": "Embeddable in-browser AI assistant. Crawls, indexes and answers questions about the host site entirely client-side via transformers.js.",
+  "description": "AI site search with zero backend. Crawls, indexes and answers questions about the host site entirely in the visitor\u2019s browser via transformers.js.",
   "type": "module",
   "license": "MIT",
-  "main": "./dist/web-ai.mjs",
-  "module": "./dist/web-ai.mjs",
+  "main": "./dist/zerosearch.mjs",
+  "module": "./dist/zerosearch.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/web-ai.mjs"
+      "import": "./dist/zerosearch.mjs"
     },
     "./dist/*": "./dist/*"
   },
@@ -30,7 +30,7 @@
     "test:e2e": "npm run build && npm run demo:dist && playwright test",
     "size": "node scripts/check-size.mjs",
     "build:lib": "vite build --mode lib",
-    "demo:dist": "DEMO_SCRIPT=/dist/web-ai.js node demo/build-demo.mjs"
+    "demo:dist": "DEMO_SCRIPT=/dist/zerosearch.js node demo/build-demo.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

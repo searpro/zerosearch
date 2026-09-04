@@ -1,6 +1,6 @@
 import type { AskResult, GenerationStatus, TopicsResult } from '../engine/protocol.js';
 import type { Emitter } from '../engine/events.js';
-import type { WebAIConfig } from '../types.js';
+import type { ZeroSearchConfig } from '../types.js';
 import {
   answerTurn,
   errorTurn,
@@ -12,7 +12,7 @@ import {
 } from './render.js';
 import { styles } from './theme.js';
 
-const HOST_TAG = 'web-ai-root';
+const HOST_TAG = 'zerosearch-root';
 
 /**
  * The widget: a floating bubble that opens a panel with a composer and a
@@ -24,7 +24,7 @@ const HOST_TAG = 'web-ai-root';
  * keeps the headless API and this UI honest about sharing one engine.
  */
 export class Widget {
-  #config: WebAIConfig;
+  #config: ZeroSearchConfig;
   #events: Emitter;
   #host: HTMLElement;
   #root: ShadowRoot;
@@ -50,7 +50,7 @@ export class Widget {
   onFirstOpen: (() => void) | null = null;
   #hasOpened = false;
 
-  constructor(config: WebAIConfig, events: Emitter) {
+  constructor(config: ZeroSearchConfig, events: Emitter) {
     this.#config = config;
     this.#events = events;
     this.#host = document.createElement(HOST_TAG);

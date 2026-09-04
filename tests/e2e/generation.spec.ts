@@ -59,7 +59,7 @@ test.describe('generated answer quality', () => {
   test('index the site, load the model, and score every answer', async () => {
     await page.goto(`${DEMO}index.html?tier=${TIER}`);
     await page.evaluate(async (tier: string) => {
-      indexedDB.deleteDatabase('web-ai');
+      indexedDB.deleteDatabase('zerosearch');
       await new Promise((r) => setTimeout(r, 300));
       (window as any).__tier = tier;
     }, TIER);
@@ -69,7 +69,7 @@ test.describe('generated answer quality', () => {
     // `generate: 'auto'` path swallows its own errors by design — fine for a
     // widget, useless for a test that needs to know why nothing generated.
     const status = await page.evaluate(async (tier: string) => {
-      const api = (window as any).WebAI;
+      const api = (window as any).ZeroSearch;
       api.destroy();
       await api.boot({ maxTier: tier, generate: 'auto' });
       await api.prepare();
@@ -87,14 +87,14 @@ test.describe('generated answer quality', () => {
         'prometheus migration questions', 'changelog version 3 breaking', 'about the company people',
         'columnar storage engine', 'api write query endpoints', 'contact support', 'quickstart',
       ]) {
-        await (window as any).WebAI.ask(warm);
+        await (window as any).ZeroSearch.ask(warm);
       }
     });
 
     const raw = await page.evaluate(async (list: Case[]) => {
       const out: { query: string; answer: string | null; grounded: boolean }[] = [];
       for (const item of list) {
-        const result: AskResult = await (window as any).WebAI.ask(item.query);
+        const result: AskResult = await (window as any).ZeroSearch.ask(item.query);
         out.push({ query: item.query, answer: result.answer, grounded: result.grounded });
       }
       return out;

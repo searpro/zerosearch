@@ -1,18 +1,20 @@
-# web-ai
+# zerosearch
+
+**AI site search with zero backend.**
 
 An AI assistant for your site, in one `<script>` tag. It reads the site, indexes it, retrieves
-from it and answers questions about it — **entirely in the visitor's browser**. No backend, no
-API keys, no data leaving the origin.
+from it and answers questions about it — **entirely in the visitor's browser**. No server to run,
+no API keys, no per-query bill, no data leaving the origin.
 
 ```html
-<script src="https://your-site.example/web-ai.js" data-web-ai defer></script>
+<script src="https://your-site.example/zerosearch.js" data-zerosearch defer></script>
 ```
 
 That is the whole integration. The script mounts a shadow-DOM widget, discovers the site's
 pages from `sitemap.xml`, and starts answering with cited passages from real pages. On a device
 with WebGPU it can additionally write a short prose answer over those passages.
 
-**▶ [Try the live demo](https://searpro.github.io/web-ai/)** — a 13-page fictional product site
+**▶ [Try the live demo](https://searpro.github.io/zerosearch/)** — a 13-page fictional product site
 with the widget on it. Retrieval starts working within seconds and costs about 36MB; written
 answers are offered separately, because they mean a 386MB model download and that should be your
 choice, not a surprise.
@@ -72,14 +74,14 @@ include the big download, and strict grounding with a refusal floor instead of f
 
 ### Script tag (the drop-in path)
 
-Build the bundles, copy `dist/web-ai.js` and `dist/web-ai.worker.js` to the same directory on your
+Build the bundles, copy `dist/zerosearch.js` and `dist/zerosearch.worker.js` to the same directory on your
 site, and add one tag:
 
 ```html
-<script src="/assets/web-ai.js" data-web-ai defer></script>
+<script src="/assets/zerosearch.js" data-zerosearch defer></script>
 ```
 
-`data-web-ai` is the opt-in marker: the script auto-boots only when it is present, and the worker
+`data-zerosearch` is the opt-in marker: the script auto-boots only when it is present, and the worker
 URL is derived from the script's own `src` (override with `data-worker-url` if they live apart).
 
 Requirements on the host site:
@@ -91,18 +93,18 @@ Requirements on the host site:
 ### npm
 
 ```bash
-npm install web-ai
+npm install zerosearch
 ```
 
 ```js
-import WebAI from 'web-ai';
+import ZeroSearch from 'zerosearch';
 
-await WebAI.boot({ sitemapUrl: '/sitemap.xml', widget: false });
-const result = await WebAI.ask('what is in the Team plan?');
+await ZeroSearch.boot({ sitemapUrl: '/sitemap.xml', widget: false });
+const result = await ZeroSearch.ask('what is in the Team plan?');
 ```
 
 Importing the module gives you the API without mounting anything: the auto-boot only fires when a
-`script[data-web-ai]` tag exists on the page. Named exports (`WebAI`, `Widget`, `Orchestrator`,
+`script[data-zerosearch]` tag exists on the page. Named exports (`ZeroSearch`, `Widget`, `Orchestrator`,
 `resolveConfig`, `DEFAULT_CONFIG`, and all types) are available from the same entry.
 
 ### Build outputs
@@ -111,9 +113,9 @@ Importing the module gives you the API without mounting anything: the auto-boot 
 
 | File | Format | Role |
 |---|---|---|
-| `web-ai.js` | IIFE | The script tag build. Config, events, widget shell, DOM extraction. **23.2KB brotli**, against a 30KB budget enforced in `npm run size`. |
-| `web-ai.mjs` | ESM | The npm build. Same code, keeps named exports, installs no global. |
-| `web-ai.worker.js` | ESM | The worker: capabilities, embedder, generator, indexing, retrieval. **14.7KB brotli**, fetched lazily, once per browser. |
+| `zerosearch.js` | IIFE | The script tag build. Config, events, widget shell, DOM extraction. **23.2KB brotli**, against a 30KB budget enforced in `npm run size`. |
+| `zerosearch.mjs` | ESM | The npm build. Same code, keeps named exports, installs no global. |
+| `zerosearch.worker.js` | ESM | The worker: capabilities, embedder, generator, indexing, retrieval. **14.7KB brotli**, fetched lazily, once per browser. |
 
 The main bundle contains no ML code at all. That is the point: a page that embeds the script but
 is never interacted with pays roughly 23KB and nothing else.
@@ -126,8 +128,8 @@ Set options as `data-*` attributes on the script tag:
 
 ```html
 <script
-  src="/assets/web-ai.js"
-  data-web-ai
+  src="/assets/zerosearch.js"
+  data-zerosearch
   data-sitemap="/sitemap.xml"
   data-max-tier="small"
   data-generate="ask"
@@ -161,20 +163,20 @@ Set options as `data-*` attributes on the script tag:
 Config never throws. A bad value falls back to its default and is recorded as a warning (printed
 only when `data-debug` is on) — a widget must not break the page it is embedded on.
 
-### `window.WebAIConfig`
+### `window.ZeroSearchConfig`
 
 When the script tag is written by a CMS or a tag manager and cannot carry attributes, set the
 config on the page instead. It must appear **before** the script:
 
 ```html
 <script>
-  window.WebAIConfig = { sitemapUrl: '/sitemap.xml', maxTier: 'retrieval', accent: '#0f766e' };
+  window.ZeroSearchConfig = { sitemapUrl: '/sitemap.xml', maxTier: 'retrieval', accent: '#0f766e' };
 </script>
-<script src="/assets/web-ai.js" data-web-ai defer></script>
+<script src="/assets/zerosearch.js" data-zerosearch defer></script>
 ```
 
-Precedence, least specific first: defaults → `data-*` attributes → `window.WebAIConfig` →
-the object passed to `WebAI.boot()`.
+Precedence, least specific first: defaults → `data-*` attributes → `window.ZeroSearchConfig` →
+the object passed to `ZeroSearch.boot()`.
 
 ---
 
@@ -195,7 +197,7 @@ a compile error rather than a runtime surprise.
 ```
 ┌─────────────────────── MAIN THREAD ────────────────────────┐
 │                                                            │
-│  index.ts        window.WebAI, auto-boot, event wiring     │
+│  index.ts        window.ZeroSearch, auto-boot, event wiring     │
 │  config.ts       data-* parsing, defaults, validation      │
 │  ui/             shadow-DOM widget (bubble, panel, render) │
 │  engine/                                                   │
@@ -269,7 +271,7 @@ gated on something more specific than the last.
 
 ```mermaid
 flowchart TD
-    A["&lt;script data-web-ai&gt;"] --> B["Parse config: defaults, data-*, WebAIConfig"]
+    A["&lt;script data-zerosearch&gt;"] --> B["Parse config: defaults, data-*, ZeroSearchConfig"]
     B --> C["Mount shadow-DOM bubble<br/>~23KB, no ML code, no network"]
     C --> D{preload}
     D -->|"idle (default)"| E["requestIdleCallback"]
@@ -543,7 +545,7 @@ and sharpens as the background pass runs.
 
 ## Caching and freshness
 
-Everything is persisted to IndexedDB (`web-ai`, five object stores: `meta`, `manifest`, `pages`,
+Everything is persisted to IndexedDB (`zerosearch`, five object stores: `meta`, `manifest`, `pages`,
 `chunks`, `vectors`) under a compound cache key:
 
 ```
@@ -613,8 +615,8 @@ To avoid third-party origins entirely, host both yourself:
 
 ```html
 <script
-  src="/assets/web-ai.js"
-  data-web-ai
+  src="/assets/zerosearch.js"
+  data-zerosearch
   data-library-url="/assets/transformers.mjs"
   data-model-base-url="/models/"
   defer
@@ -628,34 +630,34 @@ rather than hanging silently.
 
 ## JavaScript API
 
-The script tag installs `window.WebAI`. The npm build exports the same instance as its default
+The script tag installs `window.ZeroSearch`. The npm build exports the same instance as its default
 export.
 
 ### Methods
 
 ```ts
 // Lifecycle
-await WebAI.boot(overrides?)            // resolve config + mount widget. Cheap: no worker, no network
-await WebAI.prepare()                   // start the worker, load the embedder, build the manifest
-WebAI.destroy()                         // tear down worker, widget and listeners
+await ZeroSearch.boot(overrides?)            // resolve config + mount widget. Cheap: no worker, no network
+await ZeroSearch.prepare()                   // start the worker, load the embedder, build the manifest
+ZeroSearch.destroy()                         // tear down worker, widget and listeners
 
 // Asking
-const result = await WebAI.ask('what is in the Team plan?')
+const result = await ZeroSearch.ask('what is in the Team plan?')
 // -> { grounded, citations[], suggestions[], fetched[], tookMs, answer, sources[], cited[] }
 
 // Reading the site ahead
-await WebAI.enrich({ budget: 25 })      // bounded, idle-scheduled, resumable
-await WebAI.cancelEnrichment()          // what has been read is kept
+await ZeroSearch.enrich({ budget: 25 })      // bounded, idle-scheduled, resumable
+await ZeroSearch.cancelEnrichment()          // what has been read is kept
 
 // Introspection
-await WebAI.topics(limit?)              // category tree + suggested questions
-await WebAI.stats()                     // { pages, chunks, manifestSize, embedderId, tier }
-await WebAI.generationStatus()          // { available, enabled, cached, modelLabel, approxBytes, reason }
-await WebAI.enableGeneration()          // the ~390MB download, explicitly
-await WebAI.revalidate()                // re-check indexed pages, re-index what changed
+await ZeroSearch.topics(limit?)              // category tree + suggested questions
+await ZeroSearch.stats()                     // { pages, chunks, manifestSize, embedderId, tier }
+await ZeroSearch.generationStatus()          // { available, enabled, cached, modelLabel, approxBytes, reason }
+await ZeroSearch.enableGeneration()          // the ~390MB download, explicitly
+await ZeroSearch.revalidate()                // re-check indexed pages, re-index what changed
 
 // Widget
-WebAI.open(); WebAI.close(); WebAI.toggle()
+ZeroSearch.open(); ZeroSearch.close(); ZeroSearch.toggle()
 ```
 
 `ask()` and `prepare()` boot the engine on demand, so a headless integration never has to sequence
@@ -666,10 +668,10 @@ a default the site set once.
 ### Events
 
 ```js
-WebAI.on('index:done', ({ pages, chunks, fromCache }) => { /* … */ });
+ZeroSearch.on('index:done', ({ pages, chunks, fromCache }) => { /* … */ });
 
 // Or subscribe to everything — this is the hook for piping into your own analytics
-WebAI.onEvent((event) => console.log(event.type, event.payload));
+ZeroSearch.onEvent((event) => console.log(event.type, event.payload));
 ```
 
 | Event | Payload |
@@ -763,8 +765,8 @@ sees any tool schema, arguments will go through JSON schema validation with a si
 every action will be confirm-before-execute, and any failure degrades to a plain grounded answer
 rather than a guess.
 
-Phase 5's `npx web-ai build` will reuse the same crawl/extract/chunk/embed code paths in Node to
-emit a static `web-ai-index.json`, which boot checks for before crawling anything. `data-index` is
+Phase 5's `npx zerosearch build` will reuse the same crawl/extract/chunk/embed code paths in Node to
+emit a static `zerosearch-index.json`, which boot checks for before crawling anything. `data-index` is
 already parsed and validated for it; it is not yet consumed.
 
 ---

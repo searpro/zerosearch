@@ -1,7 +1,7 @@
-import type { Enrich, Generate, Position, Preload, Theme, Tier, WebAIConfig } from './types.js';
+import type { Enrich, Generate, Position, Preload, Theme, Tier, ZeroSearchConfig } from './types.js';
 import { TIERS } from './types.js';
 
-export const DEFAULT_CONFIG: WebAIConfig = {
+export const DEFAULT_CONFIG: ZeroSearchConfig = {
   sitemapUrl: '/sitemap.xml',
   maxTier: 'small',
   modelBaseUrl: null,
@@ -25,7 +25,7 @@ export const DEFAULT_CONFIG: WebAIConfig = {
 export type RawAttrs = Record<string, string | null | undefined>;
 
 export interface ResolvedConfig {
-  config: WebAIConfig;
+  config: ZeroSearchConfig;
   /** Non-fatal problems. A widget must never break the host page, so bad input degrades to a default. */
   warnings: string[];
 }
@@ -112,13 +112,13 @@ function pickUrl(
  */
 export function resolveConfig(
   attrs: RawAttrs = {},
-  overrides: Partial<WebAIConfig> = {},
+  overrides: Partial<ZeroSearchConfig> = {},
   base: string = typeof document !== 'undefined' ? document.baseURI : 'http://localhost/',
 ): ResolvedConfig {
   const warnings: string[] = [];
   const d = DEFAULT_CONFIG;
 
-  const config: WebAIConfig = {
+  const config: ZeroSearchConfig = {
     sitemapUrl:
       pickUrl(attrs['sitemap'], null, base, 'data-sitemap', warnings, { warnCrossOrigin: true }) ??
       new URL(d.sitemapUrl, base).href,

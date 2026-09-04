@@ -38,7 +38,7 @@ export type Generate = 'ask' | 'auto' | 'never';
  */
 export type Enrich = 'idle' | 'never';
 
-export interface WebAIConfig {
+export interface ZeroSearchConfig {
   /** Where the site's URL manifest lives. Resolved against the document base URL. */
   sitemapUrl: string;
   /**
@@ -75,7 +75,7 @@ export interface WebAIConfig {
 }
 
 /** Everything the engine can report. Consumed by the widget and by `onEvent`. */
-export type WebAIEventMap = {
+export type ZeroSearchEventMap = {
   'ready': { tier: Tier };
   'tier': { tier: Tier; reason: string; capped: boolean };
   'index:start': { source: 'prebuilt' | 'crawl' | 'backfill'; urls: number };
@@ -100,9 +100,9 @@ export type WebAIEventMap = {
   'error': { scope: string; message: string; cause?: unknown };
 };
 
-export type WebAIEventName = keyof WebAIEventMap;
+export type ZeroSearchEventName = keyof ZeroSearchEventMap;
 
 /** A single event, in the shape handed to the wildcard `onEvent` hook. */
-export type WebAIEvent = {
-  [K in WebAIEventName]: { type: K; payload: WebAIEventMap[K] };
-}[WebAIEventName];
+export type ZeroSearchEvent = {
+  [K in ZeroSearchEventName]: { type: K; payload: ZeroSearchEventMap[K] };
+}[ZeroSearchEventName];

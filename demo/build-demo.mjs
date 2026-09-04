@@ -16,7 +16,7 @@ const ORIGIN = process.env.DEMO_ORIGIN ?? 'http://localhost:5173';
 // GitHub Pages project site serves from `/<repo>` instead, and every internal
 // link, the canonical URL and the sitemap's `<loc>` all have to agree with it.
 const BASE = process.env.DEMO_BASE ?? '/demo';
-// Dev serves TS straight from source; `DEMO_SCRIPT=/dist/web-ai.js` exercises the built bundle.
+// Dev serves TS straight from source; `DEMO_SCRIPT=/dist/zerosearch.js` exercises the built bundle.
 const SCRIPT = process.env.DEMO_SCRIPT ?? '/src/index.ts';
 const SCRIPT_TYPE = SCRIPT.endsWith('.ts') ? ' type="module"' : '';
 
@@ -457,7 +457,7 @@ ${page.body.trim()}
   <p>&copy; 2026 Meridian Data Ltd. All rights reserved. Registered in Ireland.</p>
   <p><a href="${BASE}/index.html">Home</a> &middot; <a href="${home}">Up</a></p>
 </footer>
-<script${SCRIPT_TYPE} src="${SCRIPT}" data-web-ai data-sitemap="${BASE}/sitemap.xml" data-debug></script>
+<script${SCRIPT_TYPE} src="${SCRIPT}" data-zerosearch data-sitemap="${BASE}/sitemap.xml" data-debug></script>
 </body>
 </html>
 `;

@@ -93,15 +93,15 @@ describe('resolveConfig', () => {
 describe('readScriptAttributes', () => {
   it('camel-cases data-* names and ignores everything else', () => {
     const el = document.createElement('script');
-    el.setAttribute('data-web-ai', '');
+    el.setAttribute('data-zerosearch', '');
     el.setAttribute('data-max-tier', 'standard');
     el.setAttribute('data-model-base-url', 'https://cdn.example.com/models/');
-    el.setAttribute('src', '/web-ai.js');
+    el.setAttribute('src', '/zerosearch.js');
 
     const attrs = readScriptAttributes(el);
     expect(attrs['maxTier']).toBe('standard');
     expect(attrs['modelBaseUrl']).toBe('https://cdn.example.com/models/');
-    expect(attrs['webAi']).toBe('');
+    expect(attrs['zerosearch']).toBe('');
     expect(attrs['src']).toBeUndefined();
   });
 });
