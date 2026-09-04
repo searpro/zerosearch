@@ -12,6 +12,11 @@ That is the whole integration. The script mounts a shadow-DOM widget, discovers 
 pages from `sitemap.xml`, and starts answering with cited passages from real pages. On a device
 with WebGPU it can additionally write a short prose answer over those passages.
 
+**▶ [Try the live demo](https://searpro.github.io/web-ai/)** — a 13-page fictional product site
+with the widget on it. Retrieval starts working within seconds and costs about 36MB; written
+answers are offered separately, because they mean a 386MB model download and that should be your
+choice, not a surprise.
+
 Everything runs client-side via [transformers.js](https://github.com/huggingface/transformers.js)
 v4: embeddings with `all-MiniLM-L6-v2`, generation with `SmolLM2-360M-Instruct`, retrieval with a
 hand-rolled hybrid index in IndexedDB.
