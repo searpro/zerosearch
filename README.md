@@ -27,6 +27,8 @@ hand-rolled hybrid index in IndexedDB.
 Actions/tool-calling and the prebuilt-index CLI are not built yet — see
 [Project status](#project-status).
 
+![How zerosearch works](docs/media/how-it-works.png)
+
 ---
 
 ## Contents
